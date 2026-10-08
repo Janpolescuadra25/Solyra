@@ -1,0 +1,63 @@
+﻿# ============================================================================== 
+# SOLYRA MASTER .gitignore
+# Security & Integrity Invariants:
+# - ZERO secrets, credentials, or private keys
+# - ZERO local documentation assets or large binary dumps
+# ==============================================================================
+
+# Local reference documentation (kept local, uncommitted)
+Docs/
+*.docx
+*.pdf
+*.png
+
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.pfx
+secrets/
+credentials.json
+
+# Dependencies
+node_modules/
+.pnpm-store/
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+venv/
+env/
+
+# Build and distribution artifacts
+dist/
+build/
+out/
+.next/
+*.tsbuildinfo
+
+# Data, caches, and storage tiers
+data/
+downloads/
+cache/
+tmp/
+temp/
+Sol_Brain_Storage/local_cache/
+Local_Storage_Node/data/
+
+# Logs
+*.log
+logs/
+
+# Operating system and editor artifacts
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.BIN/
+.DS_Store
+*.swp
+*.swo
+.idea/
