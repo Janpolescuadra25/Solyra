@@ -1,4 +1,12 @@
-﻿# Solyra Master Project Roadmap
+﻿## Current Verified State
+
+> **Verified Baseline:** Phase 1 Step 1 (Repository Bootstrap) is **DONE** and verified on disk.  
+> **Initial Scaffold PIN:** c70b61dff0322d2343446d1376e6b4925dfcab86  
+> **Master Roadmap PIN:** 8ce3ecccf8358de7011dee46e867b74334703e3b  
+> **Scope Notice:** All subsequent phases (Phase 1 Step 2 through Phase 27) are forward-looking architectural plans and are **not yet implemented** in executable code.
+
+---
+# Solyra Master Project Roadmap
 
 > Single Source of Truth for Cognitive Architecture, Platform Modules, and Implementation Phases.
 

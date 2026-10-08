@@ -29,3 +29,16 @@
 
 ## License
 Proprietary - Owned by JP.
+
+## Foundation Setup — DONE
+
+- **Repository Bootstrap:** Verified complete on branch main.
+- **Baseline Commits:**
+  - Initial Scaffolding: c70b61dff0322d2343446d1376e6b4925dfcab86
+  - Master Roadmap: 8ce3ecccf8358de7011dee46e867b74334703e3b
+- **Verified Scaffold:**
+  - Backend_Solyra/ - Initialized empty service root.
+  - Frontend_Solyra/ - Initialized empty client root.
+  - Docs/ - Local reference specifications (untracked in git).
+  - Shared_Sol/, Infrastructure_Sol/, Tests_Sol/, Scripts_Sol/ - Architectural namespaces established.
+- **Current Status:** Foundation-only scaffold. Application runtime logic and tooling are pending (Phase 1 Step 2).
