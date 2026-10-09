@@ -1,11 +1,12 @@
 import * as http from 'node:http';
 import { log } from './logger.js';
+import { globalBus } from './neurobus/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
 
-export const server = http.createServer((req, res) => {
+export const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
   const method = req.method || 'GET';
 
@@ -23,15 +24,24 @@ export const server = http.createServer((req, res) => {
   }
 
   if (method === 'GET' && url === '/ready') {
+    const metrics = globalBus.getMetrics();
     const ready: ReadinessStatus = {
       ready: true,
       brainstem: 'standby',
       homeostasis: 'normal',
       storage: 'connected',
-      activeSlots: 0
+      activeSlots: metrics.queueDepth.total,
+      neurobus: 'online'
     };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(ready));
+    return;
+  }
+
+  if (method === 'GET' && url === '/neurobus/metrics') {
+    const metrics = globalBus.getMetrics();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(metrics));
     return;
   }
 
