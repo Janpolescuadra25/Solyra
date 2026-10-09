@@ -64,3 +64,6 @@ Desktop.ini
 
 # Local editor workspace settings
 .vscode/
+
+# Local AI agent tooling and scratchpads
+.agents/
