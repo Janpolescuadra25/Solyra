@@ -12,13 +12,16 @@ export interface HealthStatus {
   service: string;
 }
 
+export type BrainstemState = 'OFFLINE' | 'BOOTING' | 'STANDBY' | 'ONLINE' | 'DEGRADED' | 'SHUTTING_DOWN';
+
 export interface ReadinessStatus {
   ready: boolean;
-  brainstem: 'online' | 'standby' | 'error';
+  brainstem: 'online' | 'standby' | 'error' | BrainstemState;
   homeostasis: 'normal' | 'pressure' | 'critical';
   storage: 'connected' | 'disconnected';
   activeSlots: number;
   neurobus?: 'online' | 'offline' | 'degraded';
+  arousal?: ArousalLevel;
 }
 
 export interface NeuroBusFrame<T = unknown> {
@@ -56,4 +59,22 @@ export interface ArousalState {
   metabolicPressure: number;
   memoryPressure: number;
   timestamp: string;
+}
+
+export interface HomeostasisTelemetry {
+  arousal: ArousalState;
+  memory: {
+    heapUsedBytes: number;
+    heapTotalBytes: number;
+    rssBytes: number;
+    heapPercent: number;
+  };
+  sampleTimestamp: string;
+}
+
+export interface ThalamusGateDecision {
+  accepted: boolean;
+  reason?: string;
+  assignedPriority: SystemPriority;
+  channel: string;
 }

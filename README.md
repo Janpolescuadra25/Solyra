@@ -2,10 +2,9 @@
 
 ## Current Status
 
-> **Verified Baseline:** Phase 1 (COMPLETE) & Phase 2 Step 1 (NeuroBus Substrate) **DONE**.  
+> **Verified Baseline:** Phase 1 (COMPLETE) & Phase 2 (COMPLETE — NeuroBus, Brainstem, Homeostasis & Thalamus) **DONE**.  
 > **Master Roadmap:** See [Road_Map.md](Road_Map.md) for master architecture and phase tracking.  
-> **Active Milestone:** Milestone 1 (Minimum Viable Sol) — Phase 2 in progress.  
-> **Latest Verified PIN:** 51400291ede928d9f9e86ddcbe35555d23ffc789 (NeuroBus Substrate).
+> **Active Milestone:** Milestone 1 (Minimum Viable Sol) — Phase 2 complete. Phase 3 (Auth, Users & Chat Foundation) next.
 
 ---
 

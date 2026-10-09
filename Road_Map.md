@@ -1,15 +1,17 @@
 ## Current Verified State
 
-> **Verified Baseline:** Phase 1 (COMPLETE) and Phase 2 Step 1 (NeuroBus Substrate) are **COMPLETE and verified on disk**.  
+> **Verified Baseline:** Phase 1 (COMPLETE) and Phase 2 (COMPLETE — Steps 1 & 2 Validated) are **COMPLETE and verified on disk**.  
 > **Initial Scaffold PIN:** c70b61dff0322d2343446d1376e6b4925dfcab86  
 > **Master Roadmap PIN:** 8ce3ecccf8358de7011dee46e867b74334703e3b  
 > **Documentation Baseline PIN:** 73ab5cbc3eb48b2dad4a52a205ceb1321fd30c79  
 > **Workspace Tooling & Runtime PIN:** 30d662976bcf5f42f16488cfa1aa85ef588648bb  
-> **Documentation Sync PIN:** 1d4a35cf58c854bfbaa8bc7d4f3242d2ac9aa35d  
 > **NeuroBus Substrate PIN:** 51400291ede928d9f9e86ddcbe35555d23ffc789  
-> **Scope Notice:** Phase 1 is fully complete. Phase 2 Step 1 is verified complete in executable code. Remaining steps of Phase 2 (Brainstem, Homeostasis, Thalamus) and subsequent phases (Phase 3 through Phase 27) are forward-looking architectural milestones.
+> **Documentation Sync PIN:** 04fb3bebaa0b589a5d6ea16b89ae0764731a1034  
+> **Scope Notice:** Phase 1 and Phase 2 are fully complete and verified in executable code. Subsequent phases (Phase 3 through Phase 27) are forward-looking architectural milestones.
 
----# Solyra Master Project Roadmap
+---
+
+# Solyra Master Project Roadmap
 
 > Single Source of Truth for Cognitive Architecture, Platform Modules, and Implementation Phases.
 
@@ -53,20 +55,19 @@
 ---
 
 ### Phase 2: Brainstem, Homeostasis, Thalamus & NeuroBus
-- **Status:** IN PROGRESS (Step 1 Complete & Validated)
+- **Status:** COMPLETE (Steps 1 & 2 Validated)
 - **Completed Work (Step 1 - Priority NeuroBus Substrate):**
-  - Extended shared contracts (Shared_Sol/src/index.ts): NeuroBusFrame, PriorityQueueDepth, NeuroBusMetrics, ArousalState.
-  - Bounded priority queue engine (Backend_Solyra/src/neurobus/priority-queue.ts) with strict starvation-free priority dispatching (REFLEX > SURVIVAL > USER > LEARNING > IDLE).
-  - Low-RAM biological backpressure shedding: non-critical frames (IDLE, LEARNING) shed first when bounded capacity is reached; REFLEX and SURVIVAL preserved unconditionally.
-  - NeuroBus core pub/sub dispatcher (Backend_Solyra/src/neurobus/neurobus.ts) with synchronous immediate dispatch for REFLEX frames.
-  - Telemetry endpoint (GET /neurobus/metrics) and /ready route integrated in Backend_Solyra/src/index.ts.
-  - Verified with 9 automated unit/integration tests and HTTP smoke tests.
-  - Commit PIN: 51400291ede928d9f9e86ddcbe35555d23ffc789.
-- **Remaining Work (Step 2 - Brainstem, Homeostasis & Thalamus):**
-  - Brainstem service (Backend_Solyra/src/brainstem/): ordered boot sequence, heartbeat generator, watchdog timer, graceful shutdown.
-  - Homeostasis monitor: memory/metabolic pressure sensing, arousal level regulator.
-  - Thalamus sensory router: rate limiting, sensory gating, signal normalization.
-- **Completion Criteria:** Graceful shutdown and kill-switch tests pass; backpressure shedding verified under simulated memory pressure.
+  - Extended shared contracts: `NeuroBusFrame`, `PriorityQueueDepth`, `NeuroBusMetrics`, `ArousalState`.
+  - Bounded priority queue engine (`Backend_Solyra/src/neurobus/priority-queue.ts`) with strict starvation-free priority dispatching (`REFLEX` > `SURVIVAL` > `USER` > `LEARNING` > `IDLE`).
+  - Low-RAM biological backpressure shedding: non-critical frames (`IDLE`, `LEARNING`) shed first; `REFLEX` and `SURVIVAL` preserved unconditionally.
+  - NeuroBus core pub/sub dispatcher (`Backend_Solyra/src/neurobus/neurobus.ts`) with synchronous immediate dispatch for `REFLEX` frames.
+  - Telemetry endpoint (`GET /neurobus/metrics`).
+- **Completed Work (Step 2 - Brainstem, Homeostasis & Thalamus):**
+  - Brainstem service (`Backend_Solyra/src/brainstem/`): ordered lifecycle boot sequence (`OFFLINE` -> `BOOTING` -> `STANDBY` -> `ONLINE`), heartbeat generator, watchdog vitality monitoring, and graceful shutdown hook (`system.shutdown`).
+  - Homeostasis monitor (`Backend_Solyra/src/homeostasis/`): real-time memory usage monitoring, metabolic pressure sensing, dynamic `ArousalLevel` regulation, and telemetry endpoint (`GET /homeostasis/telemetry`).
+  - Thalamus sensory router (`Backend_Solyra/src/thalamus/`): sensory gating under hyperarousal, input normalization, rate-limiting, and sensory endpoint (`POST /thalamus/input`).
+  - Permanent test suite: `Backend_Solyra/test/brainstem.verify.ts`.
+- **Completion Criteria:** All packages compile; heartbeat, arousal, thalamus, and graceful shutdown verified; HTTP smoke tests pass.
 
 ---
 ### Phase 3: Authentication, Users, Workspaces & Chat Foundation
