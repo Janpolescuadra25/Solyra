@@ -1,0 +1,14 @@
+{
+  "name": "solyra-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Solyra Cognitive Architecture and Platform Workspace",
+  "scripts": {
+    "build": "pnpm -r run build",
+    "test": "pnpm -r run test",
+    "lint": "pnpm -r run lint"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}

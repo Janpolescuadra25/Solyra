@@ -1,0 +1,4 @@
+packages:
+  - 'Backend_Solyra'
+  - 'Frontend_Solyra'
+  - 'Shared_Sol'
