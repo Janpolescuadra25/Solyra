@@ -1,9 +1,11 @@
 ﻿## Current Verified State
 
-> **Verified Baseline:** Phase 1 Step 1 (Repository Bootstrap) is **DONE** and verified on disk.  
+> **Verified Baseline:** Phase 1 (Steps 1 & 2) is **COMPLETE and verified on disk**.  
 > **Initial Scaffold PIN:** c70b61dff0322d2343446d1376e6b4925dfcab86  
 > **Master Roadmap PIN:** 8ce3ecccf8358de7011dee46e867b74334703e3b  
-> **Scope Notice:** All subsequent phases (Phase 1 Step 2 through Phase 27) are forward-looking architectural plans and are **not yet implemented** in executable code.
+> **Documentation Baseline PIN:** 73ab5cbc3eb48b2dad4a52a205ceb1321fd30c79  
+> **Workspace Tooling & Runtime PIN:** 30d662976bcf5f42f16488cfa1aa85ef588648bb  
+> **Scope Notice:** Phase 1 is fully complete. All subsequent phases (Phase 2 through Phase 27) are forward-looking architectural milestones and are **not yet implemented** in executable code.
 
 ---
 # Solyra Master Project Roadmap
@@ -32,17 +34,20 @@
 ---
 
 ### Phase 1: Project Foundation, Security Baseline & Environment Setup
-- **Status:** IN PROGRESS (Step 1 Complete)
+- **Status:** COMPLETE (Steps 1 & 2 Validated)
 - **Completed Work (Step 1 - Bootstrap):**
   - Git repository initialized on branch main.
   - Master .gitignore established (Docs/, secrets, and .vscode/ excluded).
   - Scaffold directories established: Backend_Solyra/, Frontend_Solyra/, Shared_Sol/, Infrastructure_Sol/, Tests_Sol/, Scripts_Sol/.
   - Config templates created: .env.example (Root, Backend, Frontend).
   - Baseline Commit PIN: c70b61dff0322d2343446d1376e6b4925dfcab86.
-- **Remaining Work (Step 2 - Baseline Application & CI Tooling):**
-  - Node/pnpm package manifests for Backend and Frontend.
-  - Linting, formatting, structured JSON logger, and health check endpoints.
-- **Completion Criteria:** pnpm test and pnpm lint pass in fresh environment.
+- **Completed Work (Step 2 - Application Baseline & Tooling):**
+  - pnpm workspace established (package.json, pnpm-workspace.yaml, pnpm-lock.yaml).
+  - @solyra/shared package built with core system contracts and NeuroBus priority types.
+  - @solyra/backend Node.js/TypeScript runtime verified with structured JSON logger and smoke-tested /health & /ready endpoints.
+  - @solyra/frontend React 19 + TypeScript + Vite production build verified (dist/).
+  - Runtime Commit PIN: 30d662976bcf5f42f16488cfa1aa85ef588648bb.
+- **Completion Criteria:** All packages compile; smoke tests pass; working tree clean and synchronized to GitHub.
 
 ---
 
