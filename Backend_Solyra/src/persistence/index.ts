@@ -6,6 +6,8 @@ import {
 } from './in-memory/index.js';
 
 export * from './in-memory/index.js';
+export * from './postgres/index.js';
+export { createPostgresPersistence } from './postgres/index.js';
 
 export interface PersistenceBundle {
   users: InMemoryUserRepository;

@@ -6,13 +6,18 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts"
+    "dev": "tsx watch src/index.ts",
+    "test:brainstem": "tsx ./test/brainstem.verify.ts",
+    "test:persistence": "tsx ./test/persistence.verify.ts",
+    "test:postgres": "tsx ./src/persistence/postgres/postgres.verify.ts"
   },
   "dependencies": {
-    "@solyra/shared": "workspace:*"
+    "@solyra/shared": "workspace:*",
+    "pg": "^8.23.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@types/pg": "^8.23.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
