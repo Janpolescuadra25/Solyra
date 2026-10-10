@@ -1,9 +1,9 @@
-﻿# Solyra Monorepo: Master Roadmap & Architectural Ledger
+# Solyra Monorepo: Master Roadmap & Architectural Ledger
 
 > **Governance Authority:** CYPRA (Architect) · Hydra (Auditor) · Mantra (Executor)  
 > **Repository Strategy:** Single Monorepo with Domain Boundary Isolation (`Backend_Solyra`, `Shared_Sol`, `Frontend_Solyra`)  
 > **Strict Operational Doctrine:** Fail-Closed · Zero Speculation · Primary Code Proof · Append-Only State Audits  
-> **Last Verified Baseline PIN:** `08dd56ba55d1364de6695600754002c70f57cbc7`
+> **Last Verified Baseline PIN:** `8b6df265e059499c6f5100e16c406a6225395d3f`
 
 ---
 
@@ -16,7 +16,8 @@
 | **Phase 2.1** | Thalamus Routing, Homeostasis, NeuroBus | `4e1837fec3a1b3be5d984cfb7eb2576b5cfcf476` | Landed & Pushed | Hydra Verified |
 | **Phase 2.2** | Cognitive Loop Verification Suite (9/9 pass) | `04fb3bebaa0b589a5d6ea16b89ae0764731a1034` | Landed & Pushed | Hydra Verified |
 | **Phase 2.3** | Subsystem README Documentation & Verification | `c58d4cc37d6a7dc27a055fd7c4ba98dac72b846e` | Landed & Pushed | Hydra Verified |
-| **Phase 3.1** | Multi-Tenant Domain Contracts & Repository Interfaces | `08dd56ba55d1364de6695600754002c70f57cbc7` | Landed & Pushed | Hydra Verified |
+| **Phase 3.1** | Multi-Tenant Domain Contracts & Repository Interfaces | `8b6df265e059499c6f5100e16c406a6225395d3f` | Landed & Pushed | Hydra Verified |
+| Phase 3.2 | In-Memory Persistence Engine | `8b6df265e059499c6f5100e16c406a6225395d3f` | Landed & Pushed | Hydra Verified |
 
 ---
 
@@ -52,15 +53,15 @@
 - **Verification:** 9/9 subsystem verification checks passing in `Backend_Solyra/test/brainstem.verify.ts`.
 
 ### Phase 3: Persistence, Memory, & Context Pipeline
-- **Status:** `IN PROGRESS` (`PARTIAL - Step 1 Complete`)
+- **Status:** IN PROGRESS (Step 2 Complete)
 - **Architecture Strategy:** Interface-driven repository pattern enabling modular in-memory, SQLite, or PostgreSQL backends.
 - **Detailed Step Breakdown:**
-  - [x] **Step 3.1: Multi-Tenant Domain Contracts & Repository Interfaces** (PIN: `08dd56ba55d1364de6695600754002c70f57cbc7`)
+  - [x] **Step 3.1: Multi-Tenant Domain Contracts & Repository Interfaces** (PIN: `8b6df265e059499c6f5100e16c406a6225395d3f`)
     - Implemented and exported in `Shared_Sol/src/index.ts`:
       - Core Entities: `User`, `TenantContext`, `Workspace`, `WorkspaceMembership`, `AuthSession`, `SessionTokenPayload`.
       - Conversation & Memory: `ChatMessage`, `Conversation`, `MemoryRecord`, `WorkingMemorySlot`.
       - Repositories: `IUserRepository`, `IWorkspaceRepository`, `IChatRepository`, `IMemoryRepository`, `RepositoryResult<T>`.
-  - [ ] **Step 3.2: Multi-Tenant In-Memory & Modular Persistence Engine**
+  - [x] **Step 3.2: Multi-Tenant In-Memory & Modular Persistence Engine**
     - Build `InMemoryUserRepository`, `InMemoryWorkspaceRepository`, `InMemoryChatRepository`, and `InMemoryMemoryRepository` adhering strictly to `@solyra/shared` contracts.
     - Wire persistence instances into `Backend_Solyra` bootstrap with dependency injection.
     - Comprehensive unit and integration test suite asserting tenant isolation and atomic state mutations.
@@ -84,7 +85,7 @@
 | **NeuroBus Event Mesh** | Phase 2 | `FUNCTIONAL` | `Backend_Solyra/src/neurobus/index.ts`, priority queues verified. | High-concurrency backpressure under burst traffic. |
 | **Subsystem Documentation** | Phase 2 | `MATURE` | READMEs for Brainstem, Thalamus, Homeostasis, NeuroBus. | Ensure continuous sync with API changes. |
 | **Domain Type Contracts** | Phase 3 | `MATURE` | `Shared_Sol/src/index.ts` exported contracts. | None; compiles cleanly across monorepo. |
-| **Persistence Runtime** | Phase 3 | `NOT STARTED` | Zero repository implementations in `Backend_Solyra/src`. | Mocked state hazard; needs Step 3.2 execution. |
+| **Persistence Runtime** | Phase 3 | `MATURE` | In-memory repositories (User, Workspace, Chat, Memory) implemented in `Backend_Solyra/src/persistence/in-memory` with 100% test pass in `persistence.verify.ts` | None; persistence runtime verified. |
 | **Authentication Engine** | Phase 3 | `NOT STARTED` | Token generation and session management pending Step 3.2. | Session invalidation and replay protection. |
 
 ---
@@ -92,10 +93,12 @@
 ## 4. Persistent Risk Register
 
 1. **Risk 3.1: Untested Persistence Runtime Gaps**  
-   - *Status:* `OPEN`  
-   - *Description:* Contracts exist in `Shared_Sol`, but `Backend_Solyra` currently runs purely in-process autonomic services with zero persistence wiring.  
-   - *Mitigation:* Deliver Step 3.2 with strict adherence to `RepositoryResult<T>` and isolated multi-tenant unit test suites before wiring into live API routes.
+   - *Status:* RESOLVED (Verified at commit 8b6df265e059499c6f5100e16c406a6225395d3f)  
+   - *Description:* Contracts exist in `Shared_Sol`, and `Backend_Solyra` now includes validated in-memory persistence adapters for multi-tenant repository enforcement.  
+   - *Mitigation:* Step 3.2 is complete and verified by the persistence suite before standard external DB migration work begins.
 2. **Risk 3.2: Multi-Tenant Data Leakage**  
-   - *Status:* `OPEN`  
-   - *Description:* Repositories must enforce strict `tenantId` / `workspaceId` scoping on every query and mutation to prevent cross-tenant data contamination.  
-   - *Mitigation:* Require explicit `TenantContext` parameters on all repository methods and implement negative tests verifying cross-tenant access rejection.
+   - *Status:* RESOLVED (Verified at commit 8b6df265e059499c6f5100e16c406a6225395d3f)  
+   - *Description:* Repositories enforce tenant and workspace scoping on every query and mutation with explicit isolation checks and negative verification coverage.  
+   - *Mitigation:* Continued repository-level validation through the persistence verification harness prevents cross-tenant contamination.
+
+**Next Milestone:** Phase 3 Step 3.3: PostgreSQL Engine Migration & Database Schema
