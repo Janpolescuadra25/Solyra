@@ -1,245 +1,101 @@
-## Current Verified State
+﻿# Solyra Monorepo: Master Roadmap & Architectural Ledger
 
-> **Verified Baseline:** Phase 1 (COMPLETE) and Phase 2 (COMPLETE — Steps 1 & 2 Validated) are **COMPLETE and verified on disk**.  
-> **Initial Scaffold PIN:** c70b61dff0322d2343446d1376e6b4925dfcab86  
-> **Master Roadmap PIN:** 8ce3ecccf8358de7011dee46e867b74334703e3b  
-> **Documentation Baseline PIN:** 73ab5cbc3eb48b2dad4a52a205ceb1321fd30c79  
-> **Workspace Tooling & Runtime PIN:** 30d662976bcf5f42f16488cfa1aa85ef588648bb  
-> **NeuroBus Substrate PIN:** 51400291ede928d9f9e86ddcbe35555d23ffc789  
-> **Documentation Sync PIN:** 04fb3bebaa0b589a5d6ea16b89ae0764731a1034  
-> **Scope Notice:** Phase 1 and Phase 2 are fully complete and verified in executable code. Subsequent phases (Phase 3 through Phase 27) are forward-looking architectural milestones.
+> **Governance Authority:** CYPRA (Architect) · Hydra (Auditor) · Mantra (Executor)  
+> **Repository Strategy:** Single Monorepo with Domain Boundary Isolation (`Backend_Solyra`, `Shared_Sol`, `Frontend_Solyra`)  
+> **Strict Operational Doctrine:** Fail-Closed · Zero Speculation · Primary Code Proof · Append-Only State Audits  
+> **Last Verified Baseline PIN:** `08dd56ba55d1364de6695600754002c70f57cbc7`
 
 ---
 
-# Solyra Master Project Roadmap
+## 1. Verified Commit PIN Registry
 
-> Single Source of Truth for Cognitive Architecture, Platform Modules, and Implementation Phases.
-
----
-
-## Architecture Milestone Envelopes
-
-- **Milestone 1: Minimum Viable Sol (MVS)** — Phases 0, 1, 2, 3, 4, 6 (Core boot, NeuroBus, Homeostasis, Basic Auth & Persistent Storage).
-- **Milestone 2: Minimum Viable Council (MVC)** — Phases 8, 10, 11, 12, 13, 14 (Yoshi, Ash, Ben, Cha & Council Orchestration).
-- **Milestone 3: Complete Solyra Platform** — Phases 5, 7, 9, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25+ (UI, Multi-tier Storage, Night Consolidation & Launch).
-
----
-
-## Phase Ledger
-
-### Phase 0: Reference Review & Architecture Reconciliation
-- **Status:** READY FOR ADJUDICATION
-- **Objective:** Finalize canonical terminology, document ownership, and Council contracts.
-- **Dependencies:** None.
-- **Deliverables:** Terminology Guide, ADR-001 (Monotonic Convergence Gate), Requirements Traceability Matrix.
-- **Completion Criteria:** Zero unresolved terminology conflicts.
+| Phase / Step | Target Scope | Commit PIN (SHA-1) | Status | Verification Authority |
+| :--- | :--- | :--- | :--- | :--- |
+| **Monorepo Init** | Directory structure, workspace configs, tsconfig | `dca207865239a51d93b37ea354c4f346a0907d7f` | Landed & Pushed | Hydra Verified |
+| **Phase 1** | Autonomic Brainstem, Watchdog, State Machine | `8e6c71026d36e76cf0bf5715efbf69d656046e7f` | Landed & Pushed | Hydra Verified |
+| **Phase 2.1** | Thalamus Routing, Homeostasis, NeuroBus | `4e1837fec3a1b3be5d984cfb7eb2576b5cfcf476` | Landed & Pushed | Hydra Verified |
+| **Phase 2.2** | Cognitive Loop Verification Suite (9/9 pass) | `04fb3bebaa0b589a5d6ea16b89ae0764731a1034` | Landed & Pushed | Hydra Verified |
+| **Phase 2.3** | Subsystem README Documentation & Verification | `c58d4cc37d6a7dc27a055fd7c4ba98dac72b846e` | Landed & Pushed | Hydra Verified |
+| **Phase 3.1** | Multi-Tenant Domain Contracts & Repository Interfaces | `08dd56ba55d1364de6695600754002c70f57cbc7` | Landed & Pushed | Hydra Verified |
 
 ---
 
-### Phase 1: Project Foundation, Security Baseline & Environment Setup
-- **Status:** COMPLETE (Steps 1 & 2 Validated)
-- **Completed Work (Step 1 - Bootstrap):**
-  - Git repository initialized on branch main.
-  - Master .gitignore established (Docs/, secrets, and .vscode/ excluded).
-  - Scaffold directories established: Backend_Solyra/, Frontend_Solyra/, Shared_Sol/, Infrastructure_Sol/, Tests_Sol/, Scripts_Sol/.
-  - Config templates created: .env.example (Root, Backend, Frontend).
-  - Baseline Commit PIN: c70b61dff0322d2343446d1376e6b4925dfcab86.
-- **Completed Work (Step 2 - Application Baseline & Tooling):**
-  - pnpm workspace established (package.json, pnpm-workspace.yaml, pnpm-lock.yaml).
-  - @solyra/shared package built with core system contracts and NeuroBus priority types.
-  - @solyra/backend Node.js/TypeScript runtime verified with structured JSON logger and smoke-tested /health & /ready endpoints.
-  - @solyra/frontend React 19 + TypeScript + Vite production build verified (dist/).
-  - Runtime Commit PIN: 30d662976bcf5f42f16488cfa1aa85ef588648bb.
-- **Completion Criteria:** All packages compile; smoke tests pass; working tree clean and synchronized to GitHub.
+## 2. Milestone 1: Minimum Viable Solyra (MVS) — Engine Baseline
+
+### Phase 0: Monorepo Foundation & Contract Scaffold
+- **Status:** `COMPLETE` (`MATURE`)
+- **Key Deliverables:**
+  - `pnpm-workspace.yaml`, TypeScript project references, root linting and formatting.
+  - `@solyra/shared` contract library foundation.
+- **Verification:** Clean monorepo builds via `pnpm -r run build`.
+
+### Phase 1: Autonomic Brainstem (Core Liveness & Resiliency)
+- **Status:** `COMPLETE` (`MATURE`)
+- **Key Deliverables:**
+  - Brainstem lifecycle manager (`BOOTING` -> `RUNNING` -> `DEGRADED` -> `SHUTTING_DOWN` -> `OFFLINE`).
+  - Active Heartbeat dispatcher with configurable pulse intervals.
+  - Autonomous Watchdog timer with automatic subsystem recovery hooks.
+  - Clean POSIX signal handling (`SIGINT`, `SIGTERM`) for deterministic shutdown.
+- **Subsystem Documentation:** `Backend_Solyra/src/brainstem/README.md`.
+- **Verification:** Unit tests and regression suite pass (`brainstem.verify.ts`).
+
+### Phase 2: Cognitive Loop & Subsystem Federation
+- **Status:** `COMPLETE` (`FUNCTIONAL`)
+- **Key Deliverables:**
+  - **Thalamus:** Dynamic message router dispatching tasks across sensory, memory, reasoning, and autonomic loops.
+  - **Homeostasis:** Continuous health monitor tracking component stress, latency, and operational thresholds.
+  - **NeuroBus:** Inter-module event bus supporting prioritized messaging, async pub/sub, and backpressure telemetry.
+- **Subsystem Documentation:** 
+  - `Backend_Solyra/src/thalamus/README.md`
+  - `Backend_Solyra/src/homeostasis/README.md`
+  - `Backend_Solyra/src/neurobus/README.md`
+- **Verification:** 9/9 subsystem verification checks passing in `Backend_Solyra/test/brainstem.verify.ts`.
+
+### Phase 3: Persistence, Memory, & Context Pipeline
+- **Status:** `IN PROGRESS` (`PARTIAL - Step 1 Complete`)
+- **Architecture Strategy:** Interface-driven repository pattern enabling modular in-memory, SQLite, or PostgreSQL backends.
+- **Detailed Step Breakdown:**
+  - [x] **Step 3.1: Multi-Tenant Domain Contracts & Repository Interfaces** (PIN: `08dd56ba55d1364de6695600754002c70f57cbc7`)
+    - Implemented and exported in `Shared_Sol/src/index.ts`:
+      - Core Entities: `User`, `TenantContext`, `Workspace`, `WorkspaceMembership`, `AuthSession`, `SessionTokenPayload`.
+      - Conversation & Memory: `ChatMessage`, `Conversation`, `MemoryRecord`, `WorkingMemorySlot`.
+      - Repositories: `IUserRepository`, `IWorkspaceRepository`, `IChatRepository`, `IMemoryRepository`, `RepositoryResult<T>`.
+  - [ ] **Step 3.2: Multi-Tenant In-Memory & Modular Persistence Engine**
+    - Build `InMemoryUserRepository`, `InMemoryWorkspaceRepository`, `InMemoryChatRepository`, and `InMemoryMemoryRepository` adhering strictly to `@solyra/shared` contracts.
+    - Wire persistence instances into `Backend_Solyra` bootstrap with dependency injection.
+    - Comprehensive unit and integration test suite asserting tenant isolation and atomic state mutations.
+  - [ ] **Step 3.3: PostgreSQL Engine Migration & Database Schema**
+    - PostgreSQL schema definitions, migration scripts, and connection pool management using configured `DATABASE_URL`.
+    - Integration tests validating real relational persistence against containerized/local PostgreSQL 18.
+  - [ ] **Step 3.4: Context Window Assembly & Retrieval Engine**
+    - Long-term memory semantic search and working memory scratchpad integration.
+    - Context token budgeting and truncation defense for LLM context windows.
 
 ---
 
-### Phase 2: Brainstem, Homeostasis, Thalamus & NeuroBus
-- **Status:** COMPLETE (Steps 1 & 2 Validated)
-- **Completed Work (Step 1 - Priority NeuroBus Substrate):**
-  - Extended shared contracts: `NeuroBusFrame`, `PriorityQueueDepth`, `NeuroBusMetrics`, `ArousalState`.
-  - Bounded priority queue engine (`Backend_Solyra/src/neurobus/priority-queue.ts`) with strict starvation-free priority dispatching (`REFLEX` > `SURVIVAL` > `USER` > `LEARNING` > `IDLE`).
-  - Low-RAM biological backpressure shedding: non-critical frames (`IDLE`, `LEARNING`) shed first; `REFLEX` and `SURVIVAL` preserved unconditionally.
-  - NeuroBus core pub/sub dispatcher (`Backend_Solyra/src/neurobus/neurobus.ts`) with synchronous immediate dispatch for `REFLEX` frames.
-  - Telemetry endpoint (`GET /neurobus/metrics`).
-- **Completed Work (Step 2 - Brainstem, Homeostasis & Thalamus):**
-  - Brainstem service (`Backend_Solyra/src/brainstem/`): ordered lifecycle boot sequence (`OFFLINE` -> `BOOTING` -> `STANDBY` -> `ONLINE`), heartbeat generator, watchdog vitality monitoring, and graceful shutdown hook (`system.shutdown`).
-  - Homeostasis monitor (`Backend_Solyra/src/homeostasis/`): real-time memory usage monitoring, metabolic pressure sensing, dynamic `ArousalLevel` regulation, and telemetry endpoint (`GET /homeostasis/telemetry`).
-  - Thalamus sensory router (`Backend_Solyra/src/thalamus/`): sensory gating under hyperarousal, input normalization, rate-limiting, and sensory endpoint (`POST /thalamus/input`).
-  - Permanent test suite: `Backend_Solyra/test/brainstem.verify.ts`.
-- **Completion Criteria:** All packages compile; heartbeat, arousal, thalamus, and graceful shutdown verified; HTTP smoke tests pass.
+## 3. §15 Subsystem Maturity Matrix
 
----
-### Phase 3: Authentication, Users, Workspaces & Chat Foundation
-- **Status:** PLANNED
-- **Objective:** Multi-tenant database foundation (PostgreSQL 18), session handling, workspaces, and persistent chat/message storage.
-- **Key Files:** Backend_Solyra/src/auth/, Backend_Solyra/src/db/, Infrastructure_Sol/migrations/.
-- **Completion Criteria:** Tenant isolation verified; zero cross-user message access.
+| Subsystem / Component | Phase | Maturity Level | Primary Code Proof | Residual Risk / Open Items |
+| :--- | :--- | :--- | :--- | :--- |
+| **Brainstem Lifecycle** | Phase 1 | `MATURE` | `Backend_Solyra/src/brainstem/index.ts`, `test/brainstem.verify.ts` | None; verified zero regression. |
+| **Heartbeat & Watchdog** | Phase 1 | `MATURE` | Liveness assertion verified across all test runs. | None. |
+| **Thalamus Router** | Phase 2 | `FUNCTIONAL` | `Backend_Solyra/src/thalamus/index.ts`, verified message routing. | Dynamic handler unregistration edge cases. |
+| **Homeostasis Monitor** | Phase 2 | `FUNCTIONAL` | `Backend_Solyra/src/homeostasis/index.ts`, metric tracking. | Alert threshold auto-tuning under heavy load. |
+| **NeuroBus Event Mesh** | Phase 2 | `FUNCTIONAL` | `Backend_Solyra/src/neurobus/index.ts`, priority queues verified. | High-concurrency backpressure under burst traffic. |
+| **Subsystem Documentation** | Phase 2 | `MATURE` | READMEs for Brainstem, Thalamus, Homeostasis, NeuroBus. | Ensure continuous sync with API changes. |
+| **Domain Type Contracts** | Phase 3 | `MATURE` | `Shared_Sol/src/index.ts` exported contracts. | None; compiles cleanly across monorepo. |
+| **Persistence Runtime** | Phase 3 | `NOT STARTED` | Zero repository implementations in `Backend_Solyra/src`. | Mocked state hazard; needs Step 3.2 execution. |
+| **Authentication Engine** | Phase 3 | `NOT STARTED` | Token generation and session management pending Step 3.2. | Session invalidation and replay protection. |
 
 ---
 
-### Phase 4: Sol's Core Cortical Cycle
-- **Status:** PLANNED
-- **Objective:** Single-agent cognitive cycle: TextRelay -> WorkingMemory -> ReasoningEngine -> StrategyGate (Fast, Balanced, Expert, Expert-Deep) -> Construction -> Verification.
-- **Completion Criteria:** Sol answers simple reflex queries without Council overhead.
+## 4. Persistent Risk Register
 
----
-
-### Phase 5: Salience, Safety, Mood, Reward & Interoception
-- **Status:** PLANNED
-- **Objective:** Limbic regulation: PII screening, prompt injection screening, bounded mood modulation (affecting style only, never factual truth).
-- **Completion Criteria:** Praise floods do not alter verified claims; mood decays toward baseline.
-
----
-
-### Phase 6: Sol_Brain_Storage Foundation
-- **Status:** PLANNED
-- **Objective:** Persistent memory substrate: Episodic, Semantic, Procedural, and Source memory.
-- **Completion Criteria:** Atomic writes; chat-scoped isolation; checksum verification.
-
----
-
-### Phase 7: Persistent Chat Memory & Context Retrieval
-- **Status:** PLANNED
-- **Objective:** Hierarchical conversation summarization, semantic context retrieval within token budget.
-- **Completion Criteria:** Sol retrieves previous assignment instructions without re-reading full chat history.
-
----
-
-### Phase 8: Document Attachments & Multimodal Source Processing
-- **Status:** PLANNED
-- **Objective:** Ingestion pipeline for PDF, DOCX, XLSX, TXT with location preservation (page, sheet, cell).
-- **Completion Criteria:** Data-plane containment active; extracted text treated as literal tokens.
-
----
-
-### Phase 9: My Brain User Interface
-- **Status:** PLANNED
-- **Objective:** User-facing memory governance panel: review, edit, approve, reject, or forget saved memories.
-- **Completion Criteria:** Deletion creates immutable audit log and purges retrieval index.
-
----
-
-### Phase 10: Yoshi and the Task Ledger
-- **Status:** PLANNED
-- **Objective:** Executive planner: task decomposition, dependency tracking, acceptance criteria, state machine (OPEN -> VERIFIED).
-- **Completion Criteria:** Tasks cannot become VERIFIED without evidence; convergence detection active.
-
----
-
-### Phase 11: Ash, the Archivist
-- **Status:** PLANNED
-- **Objective:** Offline control agent: zero web access, reads SOL_brain_storage, produces offline draft and sufficiency scores.
-- **Completion Criteria:** Ash Win Rate tracked in benchmarks; zero external network calls possible.
-
----
-
-### Phase 12: Ben, the Builder
-- **Status:** PLANNED
-- **Objective:** Grounded constructor: fills draft slots from verified evidence; formats outputs; refuses speculation.
-- **Completion Criteria:** Zero ungrounded claims in final construction draft.
-
----
-
-### Phase 13: Cha, the Scout and Plan Auditor
-- **Status:** PLANNED
-- **Objective:** Controlled external research: query de-identification, URL citation extraction, independent Yoshi ledger audit.
-- **Completion Criteria:** PII scrubbed from external queries; Cha cannot edit ledger directly.
-
----
-
-### Phase 14: Complete Council of Four Orchestration
-- **Status:** PLANNED
-- **Objective:** Private inner speech deliberation: Yoshi plans -> Ash checks offline truth -> Cha verifies gaps -> Ben builds -> Sol delivers unified response.
-- **Completion Criteria:** Monotonic Convergence Gate terminates deadlocks; round budgets strictly enforced.
-
----
-
-### Phase 15: Hybrid Storage, Object Storage & Local Storage Node (LSN)
-- **Status:** PLANNED
-- **Objective:** Storage tiering (VPS DB -> S3 Object Storage -> Local Storage Node).
-- **Completion Criteria:** Two-phase commit with content-addressed hash leases; zero data loss during offline LSN transitions.
-
----
-
-### Phase 16: AI Picker & Sol Versioning
-- **Status:** PLANNED
-- **Objective:** Immutable version registry (Sol 1.0 -> Sol 1.9) and mode selector (Auto, Fast, Expert, Private Offline).
-- **Completion Criteria:** Published versions immutable; auto-mode records selection justification.
-
----
-
-### Phase 17: Owner Dashboard, Monitoring & Operations
-- **Status:** PLANNED
-- **Objective:** Administrative interface: health telemetry, Ash Win Rate, Ledger Closure Rate, RAM/CPU monitors, maintenance controls.
-- **Completion Criteria:** High-impact operational actions require strong auth and audit trails.
-
----
-
-### Phase 18: Benchmarks, Neuropsychological Battery & Release Gates
-- **Status:** PLANNED
-- **Objective:** 10 evaluation lanes (Internal Knowledge, Hallucination Rate, Calculation, Safety, Performance).
-- **Completion Criteria:** Zero release without demonstrable benchmark improvement.
-
----
-
-### Phase 19: Sleep, Consolidation, Habit Formation & Night Engines
-- **Status:** PLANNED
-- **Objective:** Low-RAM developmental growth: off-peak memory consolidation, CerebellarCache habit compilation, index defragmentation.
-- **Completion Criteria:** Zero network calls during sleep; user wake request interrupts maintenance safely within 500ms.
-
----
-
-### Phase 20: Artifact Render Path
-- **Status:** PLANNED
-- **Objective:** Deterministic compiler for validated files (PDF, DOCX, XLSX, SVG, Markdown).
-- **Completion Criteria:** Formula evaluation and cell layout verified deterministically; zero corrupted file delivery.
-
----
-
-### Phase 21: Solyra Desktop & Local Private Mode
-- **Status:** PLANNED
-- **Objective:** Cross-platform desktop client (Electron/Tauri) with local inference support and LSN integration.
-- **Completion Criteria:** Full offline operation with queued sync upon reconnection.
-
----
-
-### Phase 22: UI & Complete Solyra Experience
-- **Status:** PLANNED
-- **Objective:** White glassmorphism design: responsive layout, keyboard navigation, accessible contrast, clean status indicators.
-- **Completion Criteria:** Inner Council deliberation remains hidden; user sees clean milestone progress.
-
----
-
-### Phase 23: Security Hardening, Privacy & Adversarial Testing
-- **Status:** PLANNED
-- **Objective:** Penetration testing: prompt injection in documents, cross-tenant isolation, memory tampering drills.
-- **Completion Criteria:** All critical and high findings remediated.
-
----
-
-### Phase 24: Performance, Load & Failure Recovery Testing
-- **Status:** PLANNED
-- **Objective:** Concurrency stress testing, mid-response crash recovery, degraded-mode validation.
-- **Completion Criteria:** Bounded memory limits held under queue saturation; zero message loss.
-
----
-
-### Phase 25: Production Readiness & Controlled Launch
-- **Status:** PLANNED
-- **Objective:** Production deployment, disaster recovery drills, status page, staging-to-production gate.
-- **Completion Criteria:** Full operational readiness sign-off.
-
----
-
-### Phase 26: Continuous Improvement (Sol 1.1 - 1.9)
-- **Status:** FUTURE
-- **Objective:** Versioned metric-driven enhancements across retrieval, document parsing, and habit formation.
-- **Completion Criteria:** Frozen benchmark suites prove non-regression.
-
----
-
-### Phase 27: Sol 2 Major-Version Gate
-- **Status:** FUTURE
-- **Objective:** Next-generation cognitive architectural shift requiring formal ADR and coexistence strategy.
-- **Completion Criteria:** Full parallel benchmarking against Sol 1.9.
+1. **Risk 3.1: Untested Persistence Runtime Gaps**  
+   - *Status:* `OPEN`  
+   - *Description:* Contracts exist in `Shared_Sol`, but `Backend_Solyra` currently runs purely in-process autonomic services with zero persistence wiring.  
+   - *Mitigation:* Deliver Step 3.2 with strict adherence to `RepositoryResult<T>` and isolated multi-tenant unit test suites before wiring into live API routes.
+2. **Risk 3.2: Multi-Tenant Data Leakage**  
+   - *Status:* `OPEN`  
+   - *Description:* Repositories must enforce strict `tenantId` / `workspaceId` scoping on every query and mutation to prevent cross-tenant data contamination.  
+   - *Mitigation:* Require explicit `TenantContext` parameters on all repository methods and implement negative tests verifying cross-tenant access rejection.
