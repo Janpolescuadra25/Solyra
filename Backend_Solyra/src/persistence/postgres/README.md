@@ -1,41 +1,23 @@
-# Solyra PostgreSQL Persistence Engine (Phase 3.3)
+# Solyra PostgreSQL Persistence Engine
 
-## Architectural Overview
-This module provides the production relational persistence layer for Solyra, implementing the repository contracts exported by `@solyra/shared` with PostgreSQL 18+.
+## Architecture & Overview
+This subsystem provides the relational persistence driver for Solyra using Node.js and PostgreSQL 18. It implements connection pooling with SSL support, declarative SQL schema migrations, and relational repository adapters.
 
-## Design Principles
-1. `pg.Pool` manages a resilient, configurable connection pool for runtime access.
-2. Repository adapters keep tenant scoping explicit through workspace and user filters.
-3. SQL schemas declare foreign keys with `ON DELETE CASCADE` to maintain referential integrity.
-4. Health checks are non-fatal and return a structured result for runtime diagnostics.
-5. The migration bundle includes `init_db.sql`, `schema.sql`, and a rollback script for controlled resets.
+## Implemented Baseline
+- **Connection Pool (`pool.ts`)**: Exports `createPostgresPool`, `getPgPool` (singleton accessor), and `checkPostgresHealth` with production SSL fallback.
+- **Relational Schema (`schema.sql`, `init_db.sql`, `rollback_schema.sql`)**: Defines tables for `users`, `workspaces`, `chat_sessions`, `chat_messages`, and `knowledge_nodes`.
+- **Repository Adapters**:
+  - `PostgresUserRepository`: CRUD and lookup by email for user entities.
+  - `PostgresWorkspaceRepository`: Workspace membership and slug resolution.
+  - `PostgresChatRepository`: Session management and message history append/retrieval.
+  - `PostgresKnowledgeRepository`: Knowledge node storage with JSONB metadata.
+- **Verification Suite (`postgres.verify.ts`)**: 14 assertions validating connection health, CRUD operations, cascade deletes, and tenant isolation against PostgreSQL 18.
 
-## Files
-- `init_db.sql`: extension bootstrapping and optional `pgvector` enablement.
-- `schema.sql`: relational table declarations for users, workspaces, members, chat sessions, chat messages, and knowledge nodes.
-- `rollback_schema.sql`: destructive reset script for local teardown and verification.
-- `pool.ts`: reusable connection pool factory and health probe helper.
-- `index.ts`: bundle factory exporting the repository adapters.
-- `repositories/*.ts`: PostgreSQL-backed persistence implementations.
+## Known Gaps & Active Remaining Work
+- **Runtime Wiring**: The driver is not yet mounted in `Backend_Solyra/src/index.ts` (`storage: 'connected'` remains a placeholder).
+- **Memory Repository**: `IMemoryRepository` interface from `@solyra/shared` requires a dedicated PostgreSQL adapter (`memory.repository.ts`).
+- **Vector Search (Phase 3.4)**: `pgvector` was probed as `NOT_INSTALLED`; JSONB float-array cosine similarity search is planned for Phase 3.4.
 
-## Local Setup
-```bash
-pnpm --dir Backend_Solyra add pg
-pnpm --dir Backend_Solyra add -D @types/pg
-```
-
-```env
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/solyra_db
-DATABASE_SSL=false
-PORT=4000
-NODE_ENV=development
-```
-
-## Verification
-Run the bundled verification script:
-
-```bash
-pnpm --dir Backend_Solyra exec tsx ./src/persistence/postgres/postgres.verify.ts
-```
-
-This suite validates the pool health check, CRUD operations, cascade deletes, and multi-tenant isolation.
+## Status: IN PROGRESS (Relational Baseline Verified)
+- **Baseline Commit**: `27a3ead1958e10d54b5be5ed747b2e01cb73ab25`
+- **Verified Tests**: 14/14 assertions passing in `src/persistence/postgres/postgres.verify.ts`

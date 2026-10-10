@@ -1,59 +1,51 @@
 import { Pool, type PoolConfig } from 'pg';
 
-export interface SolyraPoolOptions {
+export interface PostgresPoolConfig {
   connectionString?: string;
   max?: number;
   idleTimeoutMillis?: number;
   connectionTimeoutMillis?: number;
-  ssl?: boolean | { rejectUnauthorized: boolean };
+  ssl?: boolean | { rejectUnauthorized?: boolean };
 }
 
-export function createPostgresPool(options?: SolyraPoolOptions): Pool {
-  const connectionString =
-    options?.connectionString ??
-    process.env.DATABASE_URL ??
-    'postgresql://postgres:postgres@localhost:5432/solyra_db';
+export type SolyraPoolOptions = PostgresPoolConfig;
 
-  const sslEnabled = options?.ssl ?? process.env.DATABASE_SSL === 'true';
+let sharedPool: Pool | null = null;
 
-  const config: PoolConfig = {
+export function createPostgresPool(config?: PostgresPoolConfig): Pool {
+  const connectionString = config?.connectionString ?? process.env.DATABASE_URL;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const sslConfig = config?.ssl ?? (isProduction ? { rejectUnauthorized: false } : undefined);
+
+  const poolConfig: PoolConfig = {
     connectionString,
-    max: options?.max ?? 20,
-    idleTimeoutMillis: options?.idleTimeoutMillis ?? 30000,
-    connectionTimeoutMillis: options?.connectionTimeoutMillis ?? 5000,
+    max: config?.max ?? 10,
+    idleTimeoutMillis: config?.idleTimeoutMillis ?? 30000,
+    connectionTimeoutMillis: config?.connectionTimeoutMillis ?? 5000,
+    ssl: sslConfig,
   };
 
-  if (sslEnabled) {
-    config.ssl = typeof sslEnabled === 'object' ? sslEnabled : { rejectUnauthorized: false };
+  return new Pool(poolConfig);
+}
+
+export function getPgPool(config?: PostgresPoolConfig): Pool {
+  if (!sharedPool) {
+    sharedPool = createPostgresPool(config);
   }
-
-  const pool = new Pool(config);
-
-  pool.on('error', (error: Error) => {
-    console.error('[PostgreSQL Pool] Unexpected error on idle client:', error.message);
-  });
-
-  return pool;
+  return sharedPool;
 }
 
 export async function checkPostgresHealth(pool: Pool): Promise<{ healthy: boolean; latencyMs: number; error?: string }> {
   const start = Date.now();
-
   try {
     const client = await pool.connect();
-
     try {
       await client.query('SELECT 1');
       return { healthy: true, latencyMs: Date.now() - start };
     } finally {
       client.release();
     }
-  } catch (error: unknown) {
-    const err = error as Error;
-    return {
-      healthy: false,
-      latencyMs: Date.now() - start,
-      error: err?.message ?? 'Database connection probe failed',
-    };
+  } catch (err) {
+    return { healthy: false, latencyMs: Date.now() - start, error: (err as Error).message };
   }
 }
