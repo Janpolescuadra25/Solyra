@@ -84,3 +84,20 @@ CREATE TABLE IF NOT EXISTS knowledge_nodes (
 
 CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_workspace ON knowledge_nodes(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_tags ON knowledge_nodes USING gin(tags);
+
+CREATE TABLE IF NOT EXISTS memory_records (
+    id VARCHAR(64) PRIMARY KEY,
+    tenant_id VARCHAR(64) NOT NULL,
+    tier VARCHAR(32) NOT NULL CHECK (tier IN ('working', 'short_term', 'long_term', 'episodic')),
+    key VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    embedding JSONB,
+    salience DOUBLE PRECISION NOT NULL DEFAULT 0,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (tenant_id, tier, key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_memory_records_tenant_tier ON memory_records(tenant_id, tier);
+CREATE INDEX IF NOT EXISTS idx_memory_records_salience ON memory_records(tenant_id, tier, salience DESC);

@@ -41,6 +41,7 @@ async function loadSql(relativePath: string): Promise<string> {
 async function resetSchema(pool: Pool): Promise<void> {
   const dropSql = `
     DROP TABLE IF EXISTS knowledge_nodes CASCADE;
+    DROP TABLE IF EXISTS memory_records CASCADE;
     DROP TABLE IF EXISTS chat_messages CASCADE;
     DROP TABLE IF EXISTS chat_sessions CASCADE;
     DROP TABLE IF EXISTS workspace_members CASCADE;
@@ -168,6 +169,29 @@ async function runVerification(): Promise<void> {
     const workspaceBKnowledge = await bundle.knowledge.listByWorkspace(workspaceB.id);
     await assert(workspaceAKnowledge.length === 1, 'Knowledge node visible in authorized workspace');
     await assert(workspaceBKnowledge.length === 0, 'Tenant isolation enforced for knowledge nodes');
+
+    const memoryOne = await bundle.memory.store({
+      id: 'memory-alpha-1',
+      tenantId: tenantA,
+      tier: 'working',
+      key: 'feature-priority',
+      content: 'Memory subsystem is live on PostgreSQL.',
+      salience: 0.94,
+      embedding: [0.2, 0.4, 0.6],
+      metadata: { tenant: 'alpha', source: 'verify' },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await assert(memoryOne.success, 'Memory record inserted successfully');
+
+    const memoryRetrieve = await bundle.memory.retrieve(tenantA, 'working', 'feature-priority');
+    await assert(memoryRetrieve.success && memoryRetrieve.data?.content === 'Memory subsystem is live on PostgreSQL.', 'Memory retrieval matched the stored record');
+
+    const memorySearch = await bundle.memory.searchBySalience(tenantA, 'working', 0.8);
+    await assert(memorySearch.success && memorySearch.data?.length === 1, 'Memory salience query returned the expected record');
+
+    const memoryDelete = await bundle.memory.delete(tenantA, 'working', 'feature-priority');
+    await assert(memoryDelete.success && memoryDelete.data === true, 'Memory delete succeeded');
 
     const deleted = await bundle.users.delete(alphaUser.id);
     await assert(deleted === true, 'User deletion returned success');

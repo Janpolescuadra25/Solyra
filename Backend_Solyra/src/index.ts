@@ -4,6 +4,7 @@ import { globalBus } from './neurobus/index.js';
 import { globalBrainstem } from './brainstem/index.js';
 import { globalHomeostasis } from './homeostasis/index.js';
 import { globalThalamus } from './thalamus/index.js';
+import { getPgPool, checkPostgresHealth } from './persistence/postgres/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
@@ -34,12 +35,13 @@ export const server = http.createServer(async (req, res) => {
     const metrics = globalBus.getMetrics();
     const telemetry = globalHomeostasis.sampleTelemetry();
     const brainstemState = globalBrainstem.getState();
+    const dbHealth = await checkPostgresHealth(getPgPool());
 
     const ready: ReadinessStatus = {
-      ready: brainstemState === 'ONLINE',
+      ready: brainstemState === 'ONLINE' && dbHealth.healthy,
       brainstem: brainstemState === 'ONLINE' ? 'online' : 'standby',
       homeostasis: telemetry.arousal.memoryPressure > 0.85 ? 'pressure' : 'normal',
-      storage: 'connected',
+      storage: dbHealth.healthy ? 'connected' : 'disconnected',
       activeSlots: metrics.queueDepth.total,
       neurobus: 'online',
       arousal: telemetry.arousal.level,

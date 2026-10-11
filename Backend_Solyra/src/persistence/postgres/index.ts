@@ -5,6 +5,7 @@ import { PostgresUserRepository, type IUserRepository } from './repositories/use
 import { PostgresWorkspaceRepository, type IWorkspaceRepository } from './repositories/workspace.repository.js';
 import { PostgresChatRepository, type IChatRepository } from './repositories/chat.repository.js';
 import { PostgresKnowledgeRepository, type IKnowledgeRepository } from './repositories/knowledge.repository.js';
+import { PostgresMemoryRepository, type IMemoryRepository } from './repositories/memory.repository.js';
 
 export interface PostgresPersistenceBundle {
   pool: Pool;
@@ -12,6 +13,7 @@ export interface PostgresPersistenceBundle {
   workspaces: IWorkspaceRepository;
   chat: IChatRepository;
   knowledge: IKnowledgeRepository;
+  memory: IMemoryRepository;
   checkHealth: () => Promise<{ healthy: boolean; latencyMs: number; error?: string }>;
 }
 
@@ -24,6 +26,7 @@ export function createPostgresPersistence(options?: SolyraPoolOptions | Pool): P
     workspaces: new PostgresWorkspaceRepository(pool),
     chat: new PostgresChatRepository(pool),
     knowledge: new PostgresKnowledgeRepository(pool),
+    memory: new PostgresMemoryRepository(pool),
     checkHealth: () => checkPostgresHealth(pool),
   };
 }
@@ -33,3 +36,4 @@ export * from './repositories/user.repository.js';
 export * from './repositories/workspace.repository.js';
 export * from './repositories/chat.repository.js';
 export * from './repositories/knowledge.repository.js';
+export * from './repositories/memory.repository.js';
