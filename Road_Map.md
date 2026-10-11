@@ -1,6 +1,6 @@
 # Solyra Development Roadmap
 
-> **Current Baseline PIN**: `git HEAD` after the Phase 3 memory verification pass and final repository push  
+> **Current Baseline PIN**: `1484725ce7f442b3be44c7302a6ebad8b9f29f91`  
 > **Master Architecture Reference**: Solyra Platform System Technical Documentation v1.0 (2026-10-09)
 
 ---
@@ -15,8 +15,6 @@
 - [x] **Phase 3.1: Domain Type Contracts** — Defined core models and abstract repository contracts in `Shared_Sol/src/index.ts`.
 - [x] **Phase 3.2: In-Memory Persistence Engine** — Verified `InMemoryUserRepository`, `InMemoryWorkspaceRepository`, `InMemoryChatRepository`, and `InMemoryMemoryRepository` with composite tier indexing (all tests passing in `persistence.verify.ts`).
 - [x] **Phase 3.3: PostgreSQL Relational Persistence Baseline** — Implemented connection pool with SSL handling (`createPostgresPool`, `getPgPool`), relational schemas (`init_db.sql`, `schema.sql`, `rollback_schema.sql`), and 4 repository adapters (`user`, `workspace`, `chat`, `knowledge`) verified by the PostgreSQL check suite.
-- [x] **Phase 3.3b: PostgreSQL Memory Repository** — Added the production `memory_records` table and `PostgresMemoryRepository` with tenant-scoped CRUD, salience search, and delete semantics for `working`, `short_term`, `long_term`, and `episodic` tiers.
-- [x] **Runtime Persistence Wiring** — `/ready` now calls `checkPostgresHealth(getPgPool())` and reports the actual storage health instead of a hardcoded placeholder.
 - [x] **Runtime Environment Fact**: Runtime probe confirmed `pgvector` is `NOT_INSTALLED`. Architecture targets PostgreSQL 18 JSONB cosine-similarity fallback for vector embeddings.
 
 ### Active Remaining Work in Phase 3
