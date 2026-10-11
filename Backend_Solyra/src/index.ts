@@ -9,10 +9,48 @@ import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
+let drainTimer: NodeJS.Timeout | null = null;
 
-globalBrainstem.boot().catch((err) => {
-  log('error', 'Failed to boot Brainstem', { error: String(err) });
-});
+export function startQueueConsumer(intervalMs: number = 50, batchSize: number = 100): void {
+  if (drainTimer) return;
+
+  drainTimer = setInterval(() => {
+    try {
+      globalBus.drain(batchSize);
+    } catch (err) {
+      console.error('[NeuroBus Consumer] Error draining queue:', err);
+    }
+  }, intervalMs);
+
+  if (drainTimer.unref) {
+    drainTimer.unref();
+  }
+}
+
+export function stopQueueConsumer(): void {
+  if (drainTimer) {
+    clearInterval(drainTimer);
+    drainTimer = null;
+  }
+}
+
+globalBrainstem.boot()
+  .then(() => {
+    startQueueConsumer(50, 100);
+  })
+  .catch((err) => {
+    log('error', 'Failed to boot Brainstem', { error: String(err) });
+  });
+
+const shutdownServer = (): void => {
+  stopQueueConsumer();
+  if (server.listening) {
+    server.close();
+  }
+};
+
+process.on('SIGTERM', shutdownServer);
+process.on('SIGINT', shutdownServer);
 
 export const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
@@ -46,8 +84,9 @@ export const server = http.createServer(async (req, res) => {
       neurobus: 'online',
       arousal: telemetry.arousal.level,
     };
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(ready));
+    const statusCode = ready.ready ? 200 : 503;
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(ready, null, 2));
     return;
   }
 

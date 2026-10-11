@@ -28,12 +28,24 @@ export class ThalamusRouter {
       };
     }
 
-    const frame = globalBus.publish<T>({
+    const publishResult = globalBus.publish<T>({
       priority: 'USER',
       channel: input.channel,
       source: input.source,
       payload: input.payload,
     });
+
+    if (!publishResult.accepted) {
+      return {
+        decision: {
+          accepted: false,
+          reason: 'Queue backpressure: frame dropped',
+          assignedPriority: 'USER',
+          channel: input.channel,
+        },
+        frame: publishResult.frame,
+      };
+    }
 
     return {
       decision: {
@@ -41,7 +53,7 @@ export class ThalamusRouter {
         assignedPriority: 'USER',
         channel: input.channel,
       },
-      frame,
+      frame: publishResult.frame,
     };
   }
 }

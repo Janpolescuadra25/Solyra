@@ -13,6 +13,11 @@ export interface PublishInput<T = unknown> {
   timestamp?: number;
 }
 
+export interface PublishResult<T = unknown> {
+  frame: NeuroBusFrame<T>;
+  accepted: boolean;
+}
+
 export class NeuroBus {
   private queue: BoundedPriorityQueue;
   private subscribers = new Map<string, Set<FrameHandler>>();
@@ -22,7 +27,7 @@ export class NeuroBus {
 
   constructor(options: PriorityQueueOptions = {}) { this.queue = new BoundedPriorityQueue(options); }
 
-  public publish<T = unknown>(input: PublishInput<T>): NeuroBusFrame<T> {
+  public publish<T = unknown>(input: PublishInput<T>): PublishResult<T> {
     this.sequenceCounter++;
     const frame: NeuroBusFrame<T> = {
       id: input.id ?? `frame_${Date.now()}_${this.sequenceCounter}`,
@@ -33,14 +38,19 @@ export class NeuroBus {
       payload: input.payload,
     };
 
+    if (frame.priority === 'REFLEX') {
+      this.dispatchImmediate(frame);
+      frame.dispatched = true;
+    }
+
     const accepted = this.queue.enqueue(frame as NeuroBusFrame);
     if (!accepted) {
       log('warn', 'NeuroBus frame dropped under backpressure', { channel: frame.channel, priority: frame.priority, source: frame.source });
-      return frame;
+      return { frame, accepted: false };
     }
+
     this.totalPublished++;
-    if (frame.priority === 'REFLEX') { this.dispatchImmediate(frame); }
-    return frame;
+    return { frame, accepted: true };
   }
 
   public subscribe<T = unknown>(channel: string, handler: FrameHandler<T>): () => void {
@@ -103,6 +113,10 @@ export class NeuroBus {
   }
 
   private async dispatch(frame: NeuroBusFrame): Promise<void> {
+    if (frame.dispatched) {
+      return;
+    }
+
     const handlers = this.subscribers.get(frame.channel);
     if (!handlers || handlers.size === 0) return;
     for (const handler of handlers) {

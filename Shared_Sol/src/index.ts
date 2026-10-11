@@ -31,6 +31,7 @@ export interface NeuroBusFrame<T = unknown> {
   source: string;
   timestamp: number;
   payload: T;
+  dispatched?: boolean;
 }
 
 export interface PriorityQueueDepth {

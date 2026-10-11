@@ -80,9 +80,26 @@ export class BoundedPriorityQueue {
 
   private shedLowPriority(incomingPriority: SystemPriority): boolean {
     const incomingWeight = PRIORITY_ORDER[incomingPriority];
-    if (this.buckets.IDLE.length > 0 && incomingWeight < PRIORITY_ORDER.IDLE) { this.buckets.IDLE.shift(); this.droppedCount++; return true; }
-    if (this.buckets.LEARNING.length > 0 && incomingWeight < PRIORITY_ORDER.LEARNING) { this.buckets.LEARNING.shift(); this.droppedCount++; return true; }
-    if (this.buckets.USER.length > 0 && incomingWeight < PRIORITY_ORDER.USER) { this.buckets.USER.shift(); this.droppedCount++; return true; }
+    if (this.buckets.IDLE.length > 0 && incomingWeight < PRIORITY_ORDER.IDLE) {
+      this.buckets.IDLE.shift();
+      this.droppedCount++;
+      return true;
+    }
+    if (this.buckets.LEARNING.length > 0 && incomingWeight < PRIORITY_ORDER.LEARNING) {
+      this.buckets.LEARNING.shift();
+      this.droppedCount++;
+      return true;
+    }
+    if (this.buckets.USER.length > 0 && incomingWeight < PRIORITY_ORDER.USER) {
+      this.buckets.USER.shift();
+      this.droppedCount++;
+      return true;
+    }
+    if (this.buckets.SURVIVAL.length > 0 && incomingWeight < PRIORITY_ORDER.SURVIVAL) {
+      this.buckets.SURVIVAL.shift();
+      this.droppedCount++;
+      return true;
+    }
     return false;
   }
 }
