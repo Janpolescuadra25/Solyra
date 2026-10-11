@@ -1,78 +1,54 @@
-# Solyra Project Roadmap
+﻿# Solyra Roadmap
 
-**Current Active Phase:** Phase 4 — Cognitive Loop & Wernicke Comprehension Engine  
-**Last Synchronized:** Phase 3.5 Runtime Stability Verification  
-**Repository Architecture:** TypeScript Monorepo (`Shared_Sol`, `Backend_Solyra`, `Frontend_Solyra`)
-
----
-
-## 1. Completed Phases (Verified & Operating)
-
-### Phase 1: Substrate Foundations & Monorepo Architecture
-- **Status:** COMPLETED & VERIFIED
-- **Delivered Capabilities:**
-  - Strict TypeScript monorepo configuration with pnpm workspaces.
-  - Shared domain models, contracts, and frame primitives in `@solyra/shared`.
-  - Core service container, configuration loader, and Brainstem lifecycle management in `@solyra/backend`.
-
-### Phase 2: NeuroBus Event Substrate & Homeostasis Telemetry
-- **Status:** COMPLETED & VERIFIED
-- **Delivered Capabilities:**
-  - Bounded multi-tier priority queue (`BoundedPriorityQueue`) with monotonic frame sequence assignment.
-  - Asynchronous event bus (`NeuroBus`) supporting subscriber dispatch, broadcast channels, and event bus metrics.
-  - Thalamus router with input categorization and priority assignment.
-  - Homeostasis health monitor with continuous memory, latency, and throughput tracking.
-
-### Phase 3: Multi-Tenant Relational Persistence & Semantic Memory
-- **Status:** COMPLETED & VERIFIED
-- **Delivered Capabilities:**
-  - Native PostgreSQL connection pool (`pg` Pool) with SQL schema migrations in `schema.sql`.
-  - Relational repository layer with tenant workspace isolation and tenant-scoped queries.
-  - Conversation thread and turn persistence with strict transaction boundaries.
-  - Vector similarity retrieval substrate using `pgvector` with graceful in-memory cosine fallback.
-  - Verification suite: `test/persistence.verify.ts` passing.
-
-### Phase 3.5: NeuroBus Runtime Hardening & Queue Stability
-- **Status:** COMPLETED & VERIFIED
-- **Delivered Capabilities:**
-  - Elimination of REFLEX priority double-dispatch bug (immediate dispatch only; bypassed queue enqueuing).
-  - Explicit queue shedding logic: drop lowest-priority `SURVIVAL` frames during queue saturation to protect critical operations.
-  - Updated `publish()` return contract returning `PublishResult` (`{ accepted: boolean; frameId: string; reason?: string }`).
-  - Continuous asynchronous background queue draining wired via `startQueueConsumer()`.
-  - HTTP 503 `/ready` readiness route reflecting uninitialized services or failing homeostasis.
-  - Verification suite: `test/brainstem.verify.ts` passing (15+ assertions).
+## Completed Phases
+- [x] **Phase 1: Foundation & Core Infrastructure** — Repository setup, monorepo structure, TypeScript configuration, shared backend type definitions, initial service scaffolding.
+- [x] **Phase 2: NeuroBus Core Messaging Layer** — Central runtime event bus architecture, priority-tiered queue dispatch (`REFLEX`, `CONTROL`, `SYNAPSE`, `STREAM`), backpressure management, telemetry, and automated test harness.
+- [x] **Phase 3: Persistence Engine & Vector Substrate** — Modular storage layer, SQLite metadata ledger, vector store with cosine similarity retrieval, deterministic zero-vector fallback, and workspace partition isolation.
+- [x] **Phase 3.5: NeuroBus Runtime Hardening** — Resolution of double-dispatch anomalies, continuous queue consumer loop, priority-aware shedding under saturation, explicit dispatch reporting, and end-to-end substrate verification.
 
 ---
 
-## 2. Active Phase: Phase 4 — Cognitive Loop & Wernicke Comprehension Engine
+## Active Phase
 
-**Objective:** Implement the core cognitive loop orchestrating semantic understanding, turn interpretation, context aggregation, and model synthesis.
+### Phase 4: Pure Code-Logic SOL Cognition Architecture
+**Objective:** Implement Solyra's deterministic, rule-grounded cognitive processing core. Cognition, intent classification, memory association, decision logic, and response formulation are driven entirely by pure code logic, typed state graphs, and deterministic vector memory indexing—without reliance on local or external Large Language Models (LLMs).
 
-### Milestone 4.1: Wernicke Comprehension Engine
-- [ ] Intent classification and semantic parsing pipeline for user inputs.
-- [ ] Entity extraction and context slot filling.
-- [ ] Integration with Thalamus router for priority-graded cognitive frame publishing.
-- [ ] Unit and verification tests for comprehension accuracy and latency bounds.
+#### Deliverables & Milestones:
+1. **Thalamus Rule-Based Intent & Semantic Router**
+   - Deterministic pattern matching, keyword lattices, and syntactic intent classification.
+   - Routing pipelines across `REFLEX` (safety/critical), `CONTROL` (state mutation), and `SYNAPSE` (associative logic) channels.
+   - Strict telemetry and routing validation with zero external inference calls.
 
-### Milestone 4.2: Context Window & Semantic Memory Retrieval
-- [ ] Semantic memory retrieval integration with the persistence substrate (`pgvector` / fallback).
-- [ ] Dynamic context budget allocation and token window compression.
-- [ ] Multi-turn conversational memory assembly with workspace isolation.
+2. **Associative Memory Integration & Cognitive Context Formation**
+   - Context assembly linking working memory with long-term vector embeddings and SQLite episodic history.
+   - Deterministic relevance scoring, time-decay weighting, and workspace boundaries.
+   - Bounded context frame generation with enforced memory ceiling constraints.
 
-### Milestone 4.3: Cognitive Loop Dispatch & LLM Synthesis
-- [ ] Orchestrated LLM execution pipeline with timeout handling and circuit breakers.
-- [ ] Streaming response dispatch over NeuroBus frames.
-- [ ] Cognitive telemetry integration with Homeostasis monitor.
+3. **Deterministic Reasoning Engine (Symbolic Logic Core)**
+   - Finite State Automata (FSA) and rule evaluation trees for multi-step reasoning.
+   - State transition verifier with fail-closed safety assertions and invariant guarantees.
+   - Explicit causal decision logs emitted to the NeuroBus for runtime observability.
+
+4. **Empirical Evaluation & Performance Benchmarking**
+   - Intent classification precision and recall across standardized deterministic test suites.
+   - Context retrieval latency benchmarks (<10ms target for 1,000 document workspaces).
+   - End-to-end cognitive loop latency (<25ms from Thalamus frame ingestion to action dispatch).
+   - Comprehensive verification suite in `Backend_Solyra/test/cognition.verify.ts`.
 
 ---
 
-## 3. Future Phases
+## Future Phases
 
-### Phase 5: Broca Articulation & Multi-Modal Output Engine
-- Output synthesis, response formatting, streaming delivery, and multi-modal adapter bindings.
+### Phase 5: Broca Articulation Engine (Pure Code-Logic Response Generation)
+- Template-driven syntactic generation, grammar engines, and deterministic string formation.
+- Semantic slot filling from Thalamus decision payloads.
+- Structured output formatting (JSON, Markdown, CLI tables, and control frames).
 
-### Phase 6: Frontend Interface & Interactive Workspace
-- Modern Web UI in `Frontend_Solyra` integrating real-time telemetry, conversational interface, and tenant settings.
+### Phase 6: Frontend Interface & Cognitive Observability
+- Reactive dashboard visualizing NeuroBus throughput, priority queues, and queue saturation.
+- Real-time cognitive graph inspector (intent resolution, decision paths, and memory lookups).
+- Workspace explorer and memory inspection console.
 
-### Phase 7: Production Hardening, Security & Deployment
-- Production Docker containerization, CI/CD pipeline, rate limiting, and end-to-end security audits.
+### Phase 7: Production Hardening & Edge Deployment
+- Production environment configurations, multi-workspace scalability tests, and performance profiling.
+- Automated CI/CD pipelines, containerization, and edge deployment readiness.
