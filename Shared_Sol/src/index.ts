@@ -230,3 +230,33 @@ export interface IMemoryRepository {
   retrieve(tenantId: string, tier: MemoryTier, key: string): Promise<MemoryRecord | null>;
   searchBySalience(tenantId: string, tier: MemoryTier, minSalience: number): Promise<MemoryRecord[]>;
 }
+
+export interface KnowledgeNode {
+  id: string;
+  workspaceId: string;
+  title: string;
+  content: string;
+  embedding?: number[];
+  tags?: string[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SemanticSearchResult<T = KnowledgeNode> {
+  node: T;
+  similarity: number;
+}
+
+export interface IKnowledgeRepository {
+  create(node: KnowledgeNode): Promise<KnowledgeNode>;
+  findById(id: string, workspaceId: string): Promise<KnowledgeNode | null>;
+  update(id: string, workspaceId: string, updates: Partial<KnowledgeNode>): Promise<KnowledgeNode | null>;
+  delete(id: string, workspaceId: string): Promise<boolean>;
+  listByWorkspace(workspaceId: string): Promise<KnowledgeNode[]>;
+  searchBySemanticSimilarity(
+    workspaceId: string,
+    queryEmbedding: number[],
+    minSimilarity?: number,
+    limit?: number,
+  ): Promise<SemanticSearchResult[]>;
+}

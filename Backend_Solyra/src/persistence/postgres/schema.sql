@@ -85,6 +85,42 @@ CREATE TABLE IF NOT EXISTS knowledge_nodes (
 CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_workspace ON knowledge_nodes(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_knowledge_nodes_tags ON knowledge_nodes USING gin(tags);
 
+-- Cosine similarity function for JSONB float arrays (PostgreSQL 18 native fallback)
+CREATE OR REPLACE FUNCTION cosine_similarity(a JSONB, b JSONB)
+RETURNS FLOAT AS $$
+DECLARE
+  arr_a NUMERIC[];
+  arr_b NUMERIC[];
+  dot_product NUMERIC := 0;
+  mag_a NUMERIC := 0;
+  mag_b NUMERIC := 0;
+  i INT;
+BEGIN
+  IF a IS NULL OR b IS NULL THEN
+    RETURN 0.0;
+  END IF;
+
+  arr_a := ARRAY(SELECT jsonb_array_elements_text(a)::NUMERIC);
+  arr_b := ARRAY(SELECT jsonb_array_elements_text(b)::NUMERIC);
+
+  IF array_length(arr_a, 1) IS NULL OR array_length(arr_b, 1) IS NULL OR array_length(arr_a, 1) != array_length(arr_b, 1) THEN
+    RETURN 0.0;
+  END IF;
+
+  FOR i IN 1..array_length(arr_a, 1) LOOP
+    dot_product := dot_product + arr_a[i] * arr_b[i];
+    mag_a := mag_a + arr_a[i] * arr_a[i];
+    mag_b := mag_b + arr_b[i] * arr_b[i];
+  END LOOP;
+
+  IF mag_a = 0 OR mag_b = 0 THEN
+    RETURN 0.0;
+  END IF;
+
+  RETURN (dot_product / (sqrt(mag_a) * sqrt(mag_b)))::FLOAT;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 CREATE TABLE IF NOT EXISTS memory_records (
     id VARCHAR(64) PRIMARY KEY,
     tenant_id VARCHAR(64) NOT NULL,

@@ -1,10 +1,11 @@
 ﻿import { Pool } from 'pg';
+import type { IKnowledgeRepository } from '@solyra/shared';
 
 import { createPostgresPool, checkPostgresHealth, type SolyraPoolOptions } from './pool.js';
 import { PostgresUserRepository, type IUserRepository } from './repositories/user.repository.js';
 import { PostgresWorkspaceRepository, type IWorkspaceRepository } from './repositories/workspace.repository.js';
 import { PostgresChatRepository, type IChatRepository } from './repositories/chat.repository.js';
-import { PostgresKnowledgeRepository, type IKnowledgeRepository } from './repositories/knowledge.repository.js';
+import { PostgresKnowledgeRepository } from './repositories/knowledge.repository.js';
 import { PostgresMemoryRepository, type IMemoryRepository } from './repositories/memory.repository.js';
 
 export interface PostgresPersistenceBundle {
