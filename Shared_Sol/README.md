@@ -1,11 +1,21 @@
-﻿# Shared_Sol (@solyra/shared)
+# @solyra/shared
 
-Shared system contracts, typed NeuroBus frame definitions, and priority interfaces for Solyra.
+Shared TypeScript contracts, types, and event schemas for the Solyra cognitive architecture.
 
-## Status: PHASE 1 — DONE (Verified Contracts)
+## Overview
+This package provides authoritative runtime and compile-time contracts shared across `@solyra/backend`, `@solyra/frontend`, and autonomous brain modules:
+- **NeuroBus Event Frames:** Priority-tiered event structures and bus metrics.
+- **Priority Tiering:** NeuroBus queue priorities (`REFLEX`, `CONTROL`, `SYNAPSE`, `STREAM`) mapped to runtime `SystemPriority` enums (`CRITICAL`, `HIGH`, `NORMAL`, `BACKGROUND`).
+- **Arousal & Homeostasis:** System arousal levels (`LOW`, `NORMAL`, `HIGH`, `CRITICAL`), states, and component health records.
+- **Council Schemas:** Role definitions (`COGNITIVE`, `ETHICAL`, `SAFETY`, `EXECUTIVE`, `MEMORY`, `COMMUNICATION`, `ORCHESTRATOR`) and evaluation tasks.
+- **Brain Package Manifests:** Validation schemas, capability declarations, and dependencies for pure code-logic brain packages.
+- **AST / DSL Schemas:** Abstract Syntax Tree definitions for safe dynamic rule compilation and execution.
 
-- **Build:** TypeScript ES2022 (compiled to dist/)
-- **Exported Contracts:**
-  - SystemPriority — NeuroBus message priority levels (REFLEX, SURVIVAL, USER, LEARNING, IDLE).
-  - HealthStatus — System liveness response interface.
-  - ReadinessStatus — System readiness and homeostasis state interface.
+## Build & Test
+```bash
+# Build TypeScript output
+pnpm --filter @solyra/shared build
+
+# Run contract verification harness
+pnpm --filter @solyra/shared test
+```
