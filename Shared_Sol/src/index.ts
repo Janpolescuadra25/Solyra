@@ -2,7 +2,16 @@
  * Solyra Core Types & System Contracts
  */
 
-export type SystemPriority = 'REFLEX' | 'SURVIVAL' | 'USER' | 'LEARNING' | 'IDLE';
+export const SystemPriority = {
+  REFLEX: 'REFLEX',
+  SURVIVAL: 'SURVIVAL',
+  USER: 'USER',
+  LEARNING: 'LEARNING',
+  IDLE: 'IDLE',
+  NORMAL: 'USER'
+} as const;
+
+export type SystemPriority = typeof SystemPriority[keyof typeof SystemPriority];
 
 export interface HealthStatus {
   status: 'ok' | 'degraded' | 'unhealthy';
@@ -53,7 +62,15 @@ export interface NeuroBusMetrics {
   activeSubscribers: number;
 }
 
-export type ArousalLevel = 'sleep' | 'drowsy' | 'alert' | 'hyperaroused';
+export const ArousalLevel = {
+  SLEEP: 'sleep',
+  DROWSY: 'drowsy',
+  ALERT: 'alert',
+  HYPERAROUSED: 'hyperaroused',
+  ENGAGED: 'alert'
+} as const;
+
+export type ArousalLevel = typeof ArousalLevel[keyof typeof ArousalLevel];
 
 export interface ArousalState {
   level: ArousalLevel;
@@ -247,6 +264,11 @@ export interface SemanticSearchResult<T = KnowledgeNode> {
   node: T;
   similarity: number;
 }
+
+// Phase 1: Council, Package Manifest, and AST contracts
+export * from './council';
+export * from './package';
+export * from './ast';
 
 export interface IKnowledgeRepository {
   create(node: KnowledgeNode): Promise<KnowledgeNode>;
