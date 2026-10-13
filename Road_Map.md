@@ -9,12 +9,16 @@
 
 ---
 
-## Active Phase
-### Phase 4: Pure Code-Logic SOL Cognition Architecture
+## Archived Completed Phases (Phase 4)
 - [x] **Phase 4.1: Foundation Contracts & DSL Substrate** — Completed in commit `f58bd1872053d18599e6a90f81e8eb84e59a858a`.
 - [x] **Phase 4.2: Thalamus Event Routing & Gate Integration** — Priority-tiered event filtering, arousal threshold gating, dynamic signal suppression, telemetry exposure at `/thalamus/stats`, and test coverage.
 - [x] **Phase 4.3: Council Consensus Engine** — Multi-role deliberation, 7-agent voting, veto enforcement, telemetry routing, and automated verification coverage.
-- [ ] **Phase 4.4: Brain Package Manager & Dynamic Runtime Loader** — Pure code-logic package validation, dependency graph resolution, and isolated sandbox execution.
+
+---
+
+## Active Phase
+### Phase 4: Pure Code-Logic SOL Cognition Architecture
+- [x] **Phase 4.4: Brain Package Manager & Dynamic Runtime Loader** — Versioned package validation, deterministic module checksum enforcement, active package lifecycle tracking, rollback safety, event emission, and `/brain/stats` telemetry.
 
 ---
 

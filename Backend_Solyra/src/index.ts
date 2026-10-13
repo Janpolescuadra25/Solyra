@@ -5,6 +5,7 @@ import { globalBrainstem } from './brainstem/index.js';
 import { globalHomeostasis } from './homeostasis/index.js';
 import { globalThalamus } from './thalamus/index.js';
 import { globalCouncil } from './council/index.js';
+import { globalBrainLoader } from './brain/index.js';
 import { getPgPool, checkPostgresHealth } from './persistence/postgres/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 
@@ -66,6 +67,12 @@ export const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/council/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalCouncil.getCouncilStats()));
+    return;
+  }
+
+  if (req.method === 'GET' && req.url === '/brain/stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(globalBrainLoader.getLoaderStats()));
     return;
   }
 
@@ -142,7 +149,7 @@ export const server = http.createServer(async (req, res) => {
   res.end(JSON.stringify({ error: 'Not Found', path: url }));
 });
 
-export { globalBus, globalThalamus, globalCouncil };
+export { globalBus, globalThalamus, globalCouncil, globalBrainLoader };
 
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {

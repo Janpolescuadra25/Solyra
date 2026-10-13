@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx ./test/council.test.ts",
+    "test": "tsx ./test/brain_loader.test.ts",
     "test:brainstem": "tsx ./test/brainstem.verify.ts",
     "test:persistence": "tsx ./test/persistence.verify.ts",
     "test:postgres": "tsx ./src/persistence/postgres/postgres.verify.ts"
