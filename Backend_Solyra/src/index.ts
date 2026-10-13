@@ -6,12 +6,62 @@ import { globalHomeostasis } from './homeostasis/index.js';
 import { globalThalamus } from './thalamus/index.js';
 import { globalCouncil } from './council/index.js';
 import { globalBrainLoader } from './brain/index.js';
+import { validateBoundedAstProgram } from './ast/index.js';
 import { getPgPool, checkPostgresHealth } from './persistence/postgres/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
 let drainTimer: NodeJS.Timeout | null = null;
+let astStats = {
+  validationsCount: 0,
+  validCount: 0,
+  invalidCount: 0,
+  lastValidationTimestamp: null as number | null,
+};
+
+function normalizeRequestPath(requestUrl: string | undefined): string {
+  if (!requestUrl) return '/';
+  try {
+    return new URL(requestUrl, 'http://localhost').pathname;
+  } catch {
+    return requestUrl.split('?')[0] || '/';
+  }
+}
+
+async function readJsonRequest(req: http.IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
+  return await new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let totalBytes = 0;
+
+    req.on('data', (chunk: Buffer | string) => {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalBytes += buffer.length;
+      if (totalBytes > maxBytes) {
+        reject(new Error('Request body exceeds 1MB limit'));
+        req.destroy();
+        return;
+      }
+      chunks.push(buffer);
+    });
+
+    req.on('end', () => {
+      const rawBody = Buffer.concat(chunks).toString('utf8');
+      if (!rawBody.trim()) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(rawBody));
+      } catch (error) {
+        reject(new Error('Invalid JSON payload'));
+      }
+    });
+
+    req.on('error', reject);
+  });
+}
 
 export function startQueueConsumer(intervalMs: number = 50, batchSize: number = 100): void {
   if (drainTimer) return;
@@ -57,23 +107,61 @@ process.on('SIGINT', shutdownServer);
 export const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
   const method = req.method || 'GET';
+  const requestPath = normalizeRequestPath(url);
 
-  if (req.method === 'GET' && req.url === '/thalamus/stats') {
+  if (req.method === 'GET' && requestPath === '/thalamus/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', data: globalThalamus.getRoutingStats() }));
     return;
   }
 
-  if (req.method === 'GET' && req.url === '/council/stats') {
+  if (req.method === 'GET' && requestPath === '/council/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalCouncil.getCouncilStats()));
     return;
   }
 
-  if (req.method === 'GET' && req.url === '/brain/stats') {
+  if (req.method === 'GET' && requestPath === '/brain/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalBrainLoader.getLoaderStats()));
     return;
+  }
+
+  if (req.method === 'GET' && requestPath === '/ast/stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, stats: astStats }));
+    return;
+  }
+
+  if (req.method === 'POST' && requestPath === '/ast/validate') {
+    try {
+      const parsedBody = await readJsonRequest(req, 1024 * 1024);
+      const program = isRecord(parsedBody) && 'program' in parsedBody ? parsedBody.program : parsedBody;
+      const result = validateBoundedAstProgram(program);
+
+      astStats.validationsCount += 1;
+      astStats.lastValidationTimestamp = Date.now();
+      if (result.valid) {
+        astStats.validCount += 1;
+      } else {
+        astStats.invalidCount += 1;
+      }
+
+      globalBus.emit('ast:validated', {
+        valid: result.valid,
+        programId: isRecord(program) ? String(program.programId ?? '') : undefined,
+        rootHash: result.rootHash,
+        timestamp: Date.now(),
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, valid: result.valid, errors: result.errors, depth: result.depth, nodeCount: result.nodeCount, rootHash: result.rootHash }));
+      return;
+    } catch (error) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Invalid request body' }));
+      return;
+    }
   }
 
   if (method === 'GET' && url === '/health') {
@@ -150,6 +238,10 @@ export const server = http.createServer(async (req, res) => {
 });
 
 export { globalBus, globalThalamus, globalCouncil, globalBrainLoader };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 if (process.env.NODE_ENV !== 'test') {
   server.listen(PORT, () => {
