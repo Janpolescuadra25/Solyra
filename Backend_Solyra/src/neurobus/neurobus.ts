@@ -63,6 +63,24 @@ export class NeuroBus {
     };
   }
 
+  public emit<T = unknown>(channel: string, payload: T): void {
+    const handlers = this.subscribers.get(channel);
+    if (!handlers || handlers.size === 0) return;
+
+    for (const handler of Array.from(handlers)) {
+      try {
+        const result = handler(payload as never);
+        if (result instanceof Promise) {
+          result.catch((err) => {
+            log('error', 'Error in async event handler', { error: String(err), channel });
+          });
+        }
+      } catch (err) {
+        log('error', 'Error in event handler', { error: String(err), channel });
+      }
+    }
+  }
+
   public async processNext(): Promise<boolean> {
     const frame = this.queue.dequeue();
     if (!frame) { return false; }
