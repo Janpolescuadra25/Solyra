@@ -16,3 +16,24 @@ The **Thalamus** subsystem functions as the sensory relay and attentional gating
 - **Source Module:** `Backend_Solyra/src/thalamus/router.ts`
 - **Singleton Export:** `thalamusRouter = new ThalamusRouter(...)` in `Backend_Solyra/src/thalamus/index.ts`
 - **Sensory Contract:** `SensoryInput<T>`, routing to NeuroBus with `priority: 'USER'`.
+
+## Telemetry & Operational Endpoints
+
+### `/thalamus/stats` (HTTP GET)
+Returns real-time routing metrics maintained by the Thalamus subsystem.
+
+**Response Schema:**
+```json
+{
+  "status": "ok",
+  "data": {
+    "routedCount": 0,
+    "suppressedCount": 0,
+    "activeRoutes": 5
+  }
+}
+```
+
+### Routing Logic Summary
+- **Priority Tiering**: Maps input system priorities (`REFLEX`, `SURVIVAL`, `USER`, `LEARNING`, `IDLE`) to designated downstream channels.
+- **Arousal Threshold Gating**: Dynamically filters incoming signals when current arousal levels fall below registered channel thresholds.

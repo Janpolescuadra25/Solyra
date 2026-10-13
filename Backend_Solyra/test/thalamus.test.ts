@@ -79,7 +79,12 @@ async function runTests(): Promise<void> {
   if (finalStats.routedCount !== 3) {
     throw new Error(`Test 7 Failed: final routed count mismatch ${JSON.stringify(finalStats)}`);
   }
+  const telemetry = router.getRoutingStats();
+  if (typeof telemetry.routedCount !== 'number' || typeof telemetry.suppressedCount !== 'number' || typeof telemetry.activeRoutes !== 'number') {
+    throw new Error(`Telemetry check Failed: getRoutingStats() must return numeric values ${JSON.stringify(telemetry)}`);
+  }
   console.log('✓ Test 7 Passed: routeInput incremented counts correctly');
+  console.log('Telemetry check: getRoutingStats() verified:', telemetry);
 
   console.log('=== ALL THALAMUS VERIFICATION TESTS PASSED ===');
 }

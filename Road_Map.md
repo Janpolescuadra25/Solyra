@@ -12,7 +12,7 @@
 ## Active Phase
 ### Phase 4: Pure Code-Logic SOL Cognition Architecture
 - [x] **Phase 4.1: Foundation Contracts & DSL Substrate** — Completed in commit `f58bd1872053d18599e6a90f81e8eb84e59a858a`.
-- [ ] **Phase 4.2: Thalamus Event Routing & Gate Integration** — Connect sensory input streams to priority-tiered Thalamus routing gates and dispatch through NeuroBus.
+- [x] **Phase 4.2: Thalamus Event Routing & Gate Integration** — Priority-tiered event filtering, arousal threshold gating, dynamic signal suppression, telemetry exposure at `/thalamus/stats`, and test coverage.
 - [ ] **Phase 4.3: Council Consensus Engine** — Implement multi-role deliberation and arbitration loop across the 7 specialized Council roles.
 - [ ] **Phase 4.4: Brain Package Manager & Dynamic Runtime Loader** — Pure code-logic package validation, dependency graph resolution, and isolated sandbox execution.
 

@@ -56,6 +56,12 @@ export const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
   const method = req.method || 'GET';
 
+  if (req.method === 'GET' && req.url === '/thalamus/stats') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ status: 'ok', data: globalThalamus.getRoutingStats() }));
+    return;
+  }
+
   if (method === 'GET' && url === '/health') {
     const health: HealthStatus = {
       status: 'ok',
