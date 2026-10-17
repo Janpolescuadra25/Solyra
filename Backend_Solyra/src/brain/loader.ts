@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { BrainPackageManifest } from '@solyra/shared';
 import { globalBus } from '../neurobus/index.js';
 
@@ -191,6 +192,46 @@ export class BrainPackageLoader {
       totalFailed: this.stats.totalFailed,
       totalUnloaded: this.stats.totalUnloaded,
       modulesCount: this.stats.activeModulesCount,
+    };
+  }
+
+  public verifyModuleContent(
+    moduleName: string,
+    content: Buffer | string
+  ): { valid: boolean; error?: string } {
+    if (!this.activeManifest) {
+      throw new Error('No active package to verify module against');
+    }
+
+    const mod = this.activeManifest.modules.find((m) => m.name === moduleName);
+    if (!mod) {
+      throw new Error(`Module ${moduleName} not found in active package manifest`);
+    }
+
+    const hash = createHash('sha256');
+    if (typeof content === 'string') {
+      hash.update(content, 'utf8');
+    } else {
+      hash.update(content);
+    }
+    const actualHash = hash.digest('hex').toLowerCase();
+    const expectedHash = (mod.sha256 || '').toLowerCase();
+
+    if (actualHash === expectedHash) {
+      return { valid: true };
+    }
+
+    globalBus.emit('brain:module_hash_mismatch', {
+      brainId: this.activeManifest.brainId,
+      moduleName,
+      expected: expectedHash,
+      actual: actualHash,
+      timestamp: Date.now(),
+    });
+
+    return {
+      valid: false,
+      error: `Hash mismatch for module ${moduleName}: expected ${expectedHash}, got ${actualHash}`,
     };
   }
 }

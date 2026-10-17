@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import http from 'node:http';
 
 process.env.NODE_ENV = 'test';
@@ -139,7 +140,69 @@ try {
   assert.ok(events.unloaded.some((entry) => entry.brainId === validManifest.brainId));
   console.log('✓ Package unload resets lifecycle state and telemetry');
 
-  // 5. Telemetry endpoint returns JSON structure
+  // 5. verifyModuleContent verifies module content integrity and emits mismatch telemetry
+  const verificationLoader = new (await import('../src/brain/loader.js')).BrainPackageLoader();
+  const verificationContent = 'export const handler = () => "ok";';
+  const verificationHash = createHash('sha256').update(verificationContent, 'utf8').digest('hex');
+  const verificationManifest = {
+    schemaVersion: '1.0',
+    brainId: 'brain-verify-content',
+    version: '1.0.0',
+    createdAt: Date.now(),
+    runtimeConstraints: {
+      maxMemoryBytes: 1024 * 1024,
+      maxExecutionTimeMs: 5000,
+      boundedAstDepth: 10,
+    },
+    modules: [
+      {
+        name: 'main',
+        entryPoint: 'dist/main.js',
+        sha256: verificationHash,
+        moduleType: 'DSL_RULESET',
+      },
+    ],
+  } as BrainPackageManifest;
+
+  const verificationLoad = verificationLoader.loadPackage(verificationManifest);
+  assert.strictEqual(verificationLoad, true);
+  const verificationResult = verificationLoader.verifyModuleContent('main', verificationContent);
+  assert.strictEqual(verificationResult.valid, true);
+  assert.strictEqual(verificationResult.error, undefined);
+
+  let mismatchEventSeen = false;
+  let mismatchEventPayload: any = null;
+  const unsubscribeMismatch = globalBus.subscribe('brain:module_hash_mismatch', (payload: any) => {
+    mismatchEventSeen = true;
+    mismatchEventPayload = payload;
+  });
+
+  const mismatchResult = verificationLoader.verifyModuleContent('main', 'tampered content');
+  unsubscribeMismatch();
+  assert.strictEqual(mismatchResult.valid, false);
+  assert.match(mismatchResult.error ?? '', /Hash mismatch for module main/);
+  assert.strictEqual(mismatchEventSeen, true);
+  assert.strictEqual(mismatchEventPayload?.brainId, 'brain-verify-content');
+  assert.strictEqual(mismatchEventPayload?.moduleName, 'main');
+
+  assert.strictEqual(verificationLoader.unloadPackage(), true);
+  assert.throws(
+    () => verificationLoader.verifyModuleContent('main', 'some content'),
+    /No active package to verify module against/
+  );
+
+  const loadedAgain = verificationLoader.loadPackage(verificationManifest);
+  assert.strictEqual(loadedAgain, true);
+  assert.throws(
+    () => verificationLoader.verifyModuleContent('missing-module', 'some content'),
+    /Module missing-module not found in active package manifest/
+  );
+  assert.strictEqual(verificationLoader.unloadPackage(), true);
+
+  console.log('✓ Module content verification validates correct hashes and emits mismatch telemetry');
+  console.log('✓ Module content verification rejects missing active package and unknown modules');
+
+  // 6. Telemetry endpoint returns JSON structure
   await new Promise<void>((resolve, reject) => {
     server.listen(0, '127.0.0.1', () => resolve());
     server.once('error', reject);

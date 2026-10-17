@@ -1,84 +1,82 @@
 # Brain Package Loader
 
-The Brain package loader manages the runtime lifecycle of versioned Brain packages. It validates package manifests against the frozen contracts in `Shared_Sol/src/package.ts`, keeps the active package isolated behind a safe rollback model, and emits runtime telemetry through the shared `globalBus`.
+The Brain package loader is responsible for validating Brain package manifests, enforcing lifecycle transitions, and ensuring a loaded package’s declared module content matches the expected SHA-256 digest before any module is trusted at runtime.
 
-## Role in the Architecture
+## Subsystem Architecture
 
-The loader sits between the shared package contract layer and the runtime execution environment. It is responsible for:
+`BrainPackageLoader` sits between the shared package contract layer and runtime execution. It is responsible for:
 
-- validating manifest schemas and checksum properties;
-- tracking the active package lifecycle state;
-- ensuring only one active package remains loaded at a time;
-- emitting state transitions into the NeuroBus event stream;
-- exposing telemetry through `GET /brain/stats`.
+- validating manifest shape, checksum format, and runtime constraints;
+- tracking the active package state across `UNLOADED`, `VALIDATED`, `ACTIVE`, and `REJECTED` transitions;
+- refusing invalid package replacements while preserving the previously active package;
+- emitting lifecycle and module-integrity telemetry through the shared `globalBus`;
+- exposing loader metrics via `GET /brain/stats`.
 
 ## Lifecycle States
 
-`BrainLifecycleState` is defined as:
+The lifecycle model is intentionally fail-closed:
 
-- `UNLOADED`
-- `VALIDATED`
-- `ACTIVE`
-- `REJECTED`
+- `UNLOADED` — no active package is available.
+- `VALIDATED` — manifest has passed schema and checksum checks.
+- `ACTIVE` — the package is eligible for runtime consumption.
+- `REJECTED` — validation failed and the package is not activated.
 
-The lifecycle is intentionally strict:
+The loader transitions are:
 
-1. A new package begins in `UNLOADED`.
-2. Validation runs before activation.
-3. Successful validation transitions to `ACTIVE`.
-4. Failed validation leaves the prior active package intact and reports a `REJECTED` state without mutation.
-5. `unloadPackage()` returns the loader to `UNLOADED`.
+1. `UNLOADED` -> `VALIDATED` during a successful manifest check.
+2. `VALIDATED` -> `ACTIVE` when the package is accepted and attached.
+3. `ACTIVE` -> `REJECTED` only when a validation failure occurs without replacing the active package.
+4. `ACTIVE` -> `UNLOADED` when `unloadPackage()` is called.
 
-## Validation Rules
+## Manifest Constraints
 
-`validateManifest()` verifies the following:
+The loader validates package manifests under the frozen contract:
 
-- `schemaVersion === '1.0'`
-- `brainId` is a non-empty string
-- `version` is present and well-formed
-- `runtimeConstraints` contains positive numeric values
-- `modules` is an array
-- each module has a non-empty `name`, `entryPoint`, valid `sha256`, and a supported `moduleType`
+- `schemaVersion` must be `1.0`.
+- `brainId` and `version` must be non-empty strings.
+- `runtimeConstraints` must contain positive numeric values for memory, runtime duration, and AST depth.
+- `modules` must be an array.
+- each module must include a non-empty `name`, valid `entryPoint`, supported `moduleType`, and a 64-character SHA-256 checksum.
 
-The checksum gate requires exact 64-character lowercase or uppercase hexadecimal strings to satisfy the manifest contract:
+Supported module types are:
+
+- `DSL_RULESET`
+- `INDEX_LOOKUP`
+- `HEURISTIC`
+- `GRAMMAR`
+
+## Module Content Verification
+
+`verifyModuleContent(moduleName, content)` computes the SHA-256 hash over the provided payload and compares it against the declared checksum in the active manifest.
 
 ```ts
-/^[a-fA-F0-9]{64}$/
+const result = loader.verifyModuleContent('brain-rules', Buffer.from('rule-set-data'));
 ```
 
-## Rollback Safety
+The method returns:
 
-The `loadPackage()` method never mutates the currently active manifest when validation fails. If a package is already active, the state remains active and the invalid package is rejected without replacing the existing manifest.
-
-## Event Stream Integration
-
-The loader emits:
-
-- `brain:package_loaded`
-- `brain:package_unloaded`
-- `brain:validation_failed`
-
-These events are delivered through `globalBus` so other runtime subsystems can subscribe and react to lifecycle changes.
-
-## Telemetry Endpoint
-
-The runtime exposes:
-
-```http
-GET /brain/stats
-```
-
-Example response:
-
-```json
+```ts
 {
-  "state": "ACTIVE",
-  "activePackage": "brain-alpha",
-  "version": "1.2.3",
-  "loadedAt": 1760000000000,
-  "totalLoaded": 3,
-  "totalFailed": 1,
-  "totalUnloaded": 2,
-  "modulesCount": 4
+  valid: true,
+  expected: '...',
+  actual: '...'
 }
 ```
+
+If the runtime hash does not match the manifest checksum, the loader emits:
+
+- `brain:module_hash_mismatch`
+
+through `globalBus` with the `brainId`, `moduleName`, `expected`, `actual`, and `timestamp` payload fields.
+
+## Telemetry Exposure
+
+The runtime exposes `/brain/stats` to report the package lifecycle and loader metrics. The endpoint returns the current state, active package identifier, version, loaded timestamp, total load/failure/unload counters, and active module count.
+
+## Current Status
+
+**Subsystem Status:** Milestone B: In Progress (Step 1 DONE)  
+**Verification Date:** 2026-10-17  
+**Step 1 Summary:** Implemented cryptographic module content verification via `verifyModuleContent`, SHA-256 hash checks with UTF-8/Buffer handling, and `brain:module_hash_mismatch` security event emission on `globalBus`.
+
+The loader now verifies module content integrity against the per-module SHA-256 checksum before runtime use, and the associated regression tests cover valid, mismatched, unloaded, and unknown-module cases.

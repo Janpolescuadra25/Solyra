@@ -2,7 +2,10 @@
 
 ## Active Phase
 ### Milestone B: Brain Package Lifecycle & Distribution
-- [ ] **Brain Package Lifecycle (Milestone B):** Module content verification, package AST extraction, sandbox isolation reusing the AST evaluator, and DSL runtime execution; extends current loader which validates manifests.
+- [x] **Step 1: Module Content SHA-256 Verification** — Cryptographic verification of module content against manifest hashes, `verifyModuleContent` in `BrainPackageLoader`, and `brain:module_hash_mismatch` telemetry on `globalBus` (verified 2026-10-17).
+- [ ] **Step 2: Package AST Extraction & Validation** — Extraction of AST from `DSL_RULESET` module payloads, validation against manifest `boundedAstDepth`, and structured error reporting.
+- [ ] **Step 3: Sandbox Isolation & Execution** — Sandboxed runtime execution reusing `evaluateAstProgram`, enforcing `maxExecutionTimeMs` timeout and computational step limits.
+- [ ] **Step 4: Package Lifecycle & Distribution** — Rollback safety, active package state management, and distribution packaging.
 
 ---
 
