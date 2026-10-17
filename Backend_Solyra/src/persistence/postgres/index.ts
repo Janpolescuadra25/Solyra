@@ -33,6 +33,7 @@ export function createPostgresPersistence(options?: SolyraPoolOptions | Pool): P
 }
 
 export * from './pool.js';
+export * from './guard.js';
 export * from './repositories/user.repository.js';
 export * from './repositories/workspace.repository.js';
 export * from './repositories/chat.repository.js';

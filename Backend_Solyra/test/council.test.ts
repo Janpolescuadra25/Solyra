@@ -42,11 +42,13 @@ try {
   engine.castVote('prop-1', CouncilMemberRole.ASH, true);
   engine.castVote('prop-1', CouncilMemberRole.BEN, true);
   engine.castVote('prop-1', CouncilMemberRole.CHA, true);
+  engine.castVote('prop-1', CouncilMemberRole.REX, true);
+  engine.castVote('prop-1', CouncilMemberRole.VAL, true);
   engine.castVote('prop-1', CouncilMemberRole.LIA, false);
 
   const r1 = engine.concludeDeliberation('prop-1');
-  assert.strictEqual(r1.approved, true, '4 of 7 approvals must pass proposal');
-  assert.strictEqual(r1.voteTally.approve, 4);
+  assert.strictEqual(r1.approved, true, 'REX and VAL affirmative approvals plus majority approval must pass proposal');
+  assert.strictEqual(r1.voteTally.approve, 6);
   assert.strictEqual(r1.voteTally.reject, 1);
   assert.strictEqual(r1.vetoedBy, undefined);
   console.log('✓ Majority approval works correctly');
@@ -110,18 +112,81 @@ try {
   engine.castVote('prop-4', CouncilMemberRole.ASH, true);
   engine.castVote('prop-4', CouncilMemberRole.BEN, true);
   engine.castVote('prop-4', CouncilMemberRole.CHA, true);
+  engine.castVote('prop-4', CouncilMemberRole.REX, true);
+  engine.castVote('prop-4', CouncilMemberRole.VAL, true);
   engine.castVote('prop-4', CouncilMemberRole.LIA, true);
   const r4 = engine.concludeDeliberation('prop-4');
-  assert.strictEqual(r4.approved, true, 'prop-4 should pass with 5 approvals');
+  assert.strictEqual(r4.approved, true, 'prop-4 should pass with majority and REX/VAL approvals');
   console.log('✓ Runtime validation prevents invalid member votes and duplicates');
 
-  // 6. Telemetry stats tracking
+  // 6. Mutation isolation: proposal object and nested votes must be deep frozen
+  const mutationProposal = engine.createDeliberationProposal(
+    'prop-mutation',
+    'Mutation Guard',
+    'Ensure returned proposal references cannot be mutated by callers',
+    CouncilMemberRole.LIA,
+  );
+
+  assert.throws(() => {
+    (mutationProposal as any).title = 'Hacked';
+  }, TypeError);
+  assert.throws(() => {
+    (mutationProposal as any).status = 'APPROVED';
+  }, TypeError);
+  assert.throws(() => {
+    (mutationProposal as any).votes.push({
+      member: CouncilMemberRole.REX,
+      approve: true,
+      isVeto: false,
+      timestamp: Date.now(),
+    });
+  }, TypeError);
+
+  const persistedMutationProposal = engine.getProposal(mutationProposal.id);
+  assert.strictEqual(persistedMutationProposal?.title, 'Mutation Guard');
+  assert.strictEqual(persistedMutationProposal?.status, 'PENDING');
+  assert.strictEqual(persistedMutationProposal?.votes.length, 0);
+
+  // 7. Mutation isolation: vote object cannot bypass veto or approval logic
+  const mutationVoteProposal = engine.createDeliberationProposal(
+    'prop-vote-mutation',
+    'Vote Mutation Guard',
+    'Ensure returned vote references cannot tamper with the recorded veto',
+    CouncilMemberRole.BEN,
+  );
+  const mutationVote = engine.castVote(
+    mutationVoteProposal.id,
+    CouncilMemberRole.REX,
+    false,
+    'Security concern',
+    true,
+  );
+
+  assert.throws(() => {
+    (mutationVote as any).approve = true;
+  }, TypeError);
+  assert.throws(() => {
+    (mutationVote as any).isVeto = false;
+  }, TypeError);
+
+  engine.castVote(mutationVoteProposal.id, CouncilMemberRole.YOSHI, true);
+  engine.castVote(mutationVoteProposal.id, CouncilMemberRole.ASH, true);
+  engine.castVote(mutationVoteProposal.id, CouncilMemberRole.CHA, true);
+  engine.castVote(mutationVoteProposal.id, CouncilMemberRole.BEN, true);
+  engine.castVote(mutationVoteProposal.id, CouncilMemberRole.VAL, true);
+
+  const mutationOutcome = engine.concludeDeliberation(mutationVoteProposal.id);
+  assert.strictEqual(mutationOutcome.approved, false, 'Caller mutation must not bypass REX veto');
+  assert.strictEqual(mutationOutcome.vetoedBy, CouncilMemberRole.REX);
+  console.log('✓ Mutation isolation prevents proposal and vote tampering');
+
+  // 8. Telemetry stats tracking
   const stats = engine.getCouncilStats();
-  assert.strictEqual(stats.totalDeliberations, 4, 'Total deliberations should be recorded');
+  assert.strictEqual(stats.totalDeliberations, 5, 'Total deliberations should be recorded');
   assert.strictEqual(stats.approvedCount, 2, 'Two majority approvals should be recorded');
-  assert.strictEqual(stats.rejectedCount, 2, 'Two rejections should be counted');
-  assert.strictEqual(stats.vetoedCount, 2, 'Two vetoes should be tracked');
-  assert.strictEqual(stats.activeDeliberations, 0, 'No active proposals should remain after resolution');
+  assert.strictEqual(stats.rejectedCount, 3, 'Three rejections should be counted');
+  assert.strictEqual(stats.vetoedCount, 3, 'Three vetoes should be tracked');
+  assert.strictEqual(stats.activeDeliberations, 1, 'The mutation guard proposal remains intentionally active');
 
   const globalStats = globalCouncil.getCouncilStats();
   assert.ok(typeof globalStats.totalDeliberations === 'number');

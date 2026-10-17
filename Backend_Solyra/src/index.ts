@@ -6,7 +6,7 @@ import { globalHomeostasis } from './homeostasis/index.js';
 import { globalThalamus } from './thalamus/index.js';
 import { globalCouncil } from './council/index.js';
 import { globalBrainLoader } from './brain/index.js';
-import { validateBoundedAstProgram } from './ast/index.js';
+import { evaluateAstProgram, validateBoundedAstProgram } from './ast/index.js';
 import { getPgPool, checkPostgresHealth } from './persistence/postgres/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 
@@ -18,6 +18,10 @@ let astStats = {
   validCount: 0,
   invalidCount: 0,
   lastValidationTimestamp: null as number | null,
+  executionsCount: 0,
+  failedExecutionsCount: 0,
+  lastExecutionTimestamp: null as number | null,
+  totalDurationMs: 0,
 };
 
 function normalizeRequestPath(requestUrl: string | undefined): string {
@@ -27,6 +31,31 @@ function normalizeRequestPath(requestUrl: string | undefined): string {
   } catch {
     return requestUrl.split('?')[0] || '/';
   }
+}
+
+function sendJsonResponse(res: http.ServerResponse, statusCode: number, payload: unknown): void {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(payload));
+}
+
+function authenticateProtectedRequest(req: http.IncomingMessage): boolean {
+  const configuredToken = process.env.SOLYRA_AUTH_TOKEN;
+  if (!configuredToken || configuredToken.trim() === '') {
+    return false;
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return false;
+  }
+
+  const rawHeader = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+  if (!rawHeader.startsWith('Bearer ')) {
+    return false;
+  }
+
+  const token = rawHeader.slice(7).trim();
+  return token === configuredToken.trim();
 }
 
 async function readJsonRequest(req: http.IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
@@ -154,12 +183,123 @@ export const server = http.createServer(async (req, res) => {
         timestamp: Date.now(),
       });
 
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: true, valid: result.valid, errors: result.errors, depth: result.depth, nodeCount: result.nodeCount, rootHash: result.rootHash }));
+      sendJsonResponse(res, 200, {
+        success: true,
+        valid: result.valid,
+        errors: result.errors,
+        depth: result.depth,
+        nodeCount: result.nodeCount,
+        rootHash: result.rootHash,
+      });
       return;
     } catch (error) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ success: false, error: error instanceof Error ? error.message : 'Invalid request body' }));
+      sendJsonResponse(res, 400, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Invalid request body',
+      });
+      return;
+    }
+  }
+
+  if (req.method === 'POST' && requestPath === '/ast/execute') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    try {
+      const rawBody = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(rawBody) || !('program' in rawBody)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Missing required field: program' });
+        return;
+      }
+
+      const program = rawBody.program;
+      const validation = validateBoundedAstProgram(program);
+      if (!validation.valid) {
+        sendJsonResponse(res, 422, { success: false, errors: validation.errors });
+        return;
+      }
+
+      globalBus.emit('ast:execution_started', {
+        programId: isRecord(program) ? String(program.programId ?? '') : undefined,
+        timestamp: Date.now(),
+      });
+
+      const executionResult = evaluateAstProgram(program as any, isRecord(rawBody.context) ? rawBody.context : {});
+
+      astStats.executionsCount += 1;
+      astStats.lastExecutionTimestamp = Date.now();
+      astStats.totalDurationMs += executionResult.durationMs ?? executionResult.executionTimeMs;
+      if (!executionResult.success) {
+        astStats.failedExecutionsCount += 1;
+        globalBus.emit('ast:execution_failed', {
+          programId: isRecord(program) ? String(program.programId ?? '') : undefined,
+          error: executionResult.error,
+          timestamp: Date.now(),
+        });
+        sendJsonResponse(res, 400, {
+          success: false,
+          error: executionResult.error,
+          diagnostic: executionResult.diagnostic ?? null,
+          execution: executionResult,
+        });
+        return;
+      }
+
+      globalBus.emit('ast:execution_completed', {
+        programId: isRecord(program) ? String(program.programId ?? '') : undefined,
+        durationMs: executionResult.durationMs ?? executionResult.executionTimeMs,
+        stepsExecuted: executionResult.stepsExecuted,
+        timestamp: Date.now(),
+      });
+
+      sendJsonResponse(res, 200, {
+        success: true,
+        execution: executionResult,
+        diagnostic: executionResult.diagnostic ?? null,
+      });
+      return;
+    } catch (error) {
+      sendJsonResponse(res, 500, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal execution error',
+      });
+      return;
+    }
+  }
+
+  if (req.method === 'POST' && requestPath === '/ast/workbench/inspect') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    try {
+      const rawBody = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(rawBody) || !('program' in rawBody)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Missing required field: program' });
+        return;
+      }
+
+      const validation = validateBoundedAstProgram(rawBody.program);
+      const execution = validation.valid
+        ? evaluateAstProgram(rawBody.program as any, isRecord(rawBody.context) ? rawBody.context : {})
+        : undefined;
+
+      sendJsonResponse(res, 200, {
+        success: true,
+        validation,
+        execution,
+        diagnostic: execution?.diagnostic ?? null,
+        stats: astStats,
+      });
+      return;
+    } catch (error) {
+      sendJsonResponse(res, 500, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal inspection error',
+      });
       return;
     }
   }

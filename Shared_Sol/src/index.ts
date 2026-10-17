@@ -1,3 +1,5 @@
+export * from './ast.js';
+
 /**
  * Solyra Core Types & System Contracts
  */

@@ -35,3 +35,23 @@ searchBySemanticSimilarity(
 
 ## Status: COMPLETE (Phase 3.4 Vector Search Verified)
 - **Verified Tests**: Semantic search, workspace isolation, and validation guards are covered in `Backend_Solyra/test/postgres.verify.ts`.
+
+## PostgreSQL Test Safety Guard (`guard.ts`)
+**Status:** DONE - LAST UPDATED: 2026-10-16
+
+To prevent accidental modification or destructive testing against the application database (`Solyra_db`), all PostgreSQL verification and integration scripts must use `guard.ts`:
+- **`validatePostgresTestSafety(options)`**:
+  - Requires `NODE_ENV === 'test'`.
+  - Requires an explicit, non-empty `SOLYRA_TEST_DB_URL` environment variable.
+  - Rejects connection strings pointing to `solyra_db` or empty database names.
+  - Returns the normalized target test database name.
+- **`assertConnectedToTestDatabase(client, expectedDbName)`**:
+  - Queries `SELECT current_database()` upon connection.
+  - Asserts that the connected database strictly matches `expectedDbName` and is not `solyra_db`.
+  - Aborts immediately before any table creation, schema modification, or write.
+- **Integration Test Execution:**
+  - Standard unit tests (`pnpm test`) do not connect to PostgreSQL.
+  - PostgreSQL integration testing is strictly opt-in via:
+    ```bash
+    pnpm run test:integration:pg
+    ```

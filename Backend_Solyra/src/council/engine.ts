@@ -9,6 +9,24 @@ import {
 import { globalBus } from '../neurobus/index.js';
 import type { NeuroBus } from '../neurobus/neurobus.js';
 
+function deepFreeze<T>(value: T): T {
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      deepFreeze(item);
+    }
+  } else {
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      deepFreeze((value as Record<string, unknown>)[key]);
+    }
+  }
+
+  return Object.freeze(value);
+}
+
 export class CouncilEngine {
   private readonly members: Set<CouncilMemberRoleType>;
   private readonly proposals = new Map<string, DeliberationProposal>();
@@ -62,7 +80,7 @@ export class CouncilEngine {
       initiator: proposal.initiator,
     });
 
-    return proposal;
+    return deepFreeze(structuredClone(proposal));
   }
 
   public castVote(
@@ -102,7 +120,7 @@ export class CouncilEngine {
     };
 
     proposal.votes.push(vote);
-    return vote;
+    return deepFreeze(structuredClone(vote));
   }
 
   public concludeDeliberation(proposalId: string): CouncilDeliberationResult {
@@ -129,10 +147,23 @@ export class CouncilEngine {
       }
     }
 
+    const rexVote = proposal.votes.find((vote) => vote.member === CouncilMemberRole.REX);
+    const valVote = proposal.votes.find((vote) => vote.member === CouncilMemberRole.VAL);
+    const rexApproved = rexVote?.approve === true;
+    const valApproved = valVote?.approve === true;
+    const rexRejected = rexVote?.approve === false;
+    const valRejected = valVote?.approve === false;
     const majorityApproved = approveCount >= 4;
-    const isApproved = majorityApproved && vetoingMember === undefined;
+    const hasCriticalAffirmativeApprovals = rexApproved && valApproved;
+    const isApproved = majorityApproved && hasCriticalAffirmativeApprovals && vetoingMember === undefined;
 
-    proposal.status = isApproved ? 'APPROVED' : 'REJECTED';
+    if (isApproved) {
+      proposal.status = 'APPROVED';
+    } else if (rexRejected || valRejected || vetoingMember) {
+      proposal.status = 'REJECTED';
+    } else {
+      proposal.status = 'PENDING';
+    }
     proposal.concludedAt = Date.now();
 
     this.stats.totalDeliberations++;
@@ -140,7 +171,7 @@ export class CouncilEngine {
 
     if (isApproved) {
       this.stats.approvedCount++;
-    } else {
+    } else if (rexRejected || valRejected || vetoingMember) {
       this.stats.rejectedCount++;
       if (vetoingMember) {
         this.stats.vetoedCount++;
@@ -164,7 +195,12 @@ export class CouncilEngine {
   }
 
   public getProposal(proposalId: string): DeliberationProposal | undefined {
-    return this.proposals.get(proposalId);
+    const proposal = this.proposals.get(proposalId);
+    if (!proposal) {
+      return undefined;
+    }
+
+    return deepFreeze(structuredClone(proposal));
   }
 
   public getCouncilStats(): CouncilStats {

@@ -7,9 +7,10 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx ./test/ast_validator.test.ts ./test/brain_loader.test.ts ./test/council.test.ts ./test/thalamus.test.ts",
+    "test": "tsx --test test/*.test.ts",
     "test:brainstem": "tsx ./test/brainstem.verify.ts",
     "test:persistence": "tsx ./test/persistence.verify.ts",
+    "test:integration:pg": "tsx test/postgres.verify.ts",
     "test:postgres": "tsx ./src/persistence/postgres/postgres.verify.ts"
   },
   "dependencies": {

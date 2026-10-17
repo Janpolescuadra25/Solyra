@@ -2,10 +2,15 @@ import { readFileSync } from 'node:fs';
 import { Pool } from 'pg';
 
 import { createPostgresPool, checkPostgresHealth, createPostgresPersistence } from '../src/persistence/postgres/index.js';
+import { assertConnectedToTestDatabase, validatePostgresTestSafety } from '../src/persistence/postgres/guard.js';
 
-const databaseName = 'solyra_db';
-const databaseUrl = process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/solyra_db';
-const adminDatabaseUrl = databaseUrl.replace(/\/solyra_db$/, '/postgres');
+const databaseUrl = process.env.SOLYRA_TEST_DB_URL;
+if (!databaseUrl) {
+  throw new Error("SAFETY ABORT: PostgreSQL test operations require explicit SOLYRA_TEST_DB_URL environment variable.");
+}
+
+const { targetDbName } = validatePostgresTestSafety({ nodeEnv: process.env.NODE_ENV, testDbUrl: databaseUrl });
+const adminDatabaseUrl = databaseUrl.replace(/\/[^/]+$/, '/postgres');
 
 async function assert(condition: boolean, message: string): Promise<void> {
   if (!condition) {
@@ -36,10 +41,10 @@ async function ensureDatabase(): Promise<void> {
   });
 
   try {
-    const exists = await adminPool.query('SELECT 1 FROM pg_database WHERE datname = $1', [databaseName]);
+    const exists = await adminPool.query('SELECT 1 FROM pg_database WHERE datname = $1', [targetDbName]);
     if (exists.rowCount === 0) {
-      await adminPool.query(`CREATE DATABASE "${databaseName}"`);
-      console.log(`Created PostgreSQL database: ${databaseName}`);
+      await adminPool.query(`CREATE DATABASE "${targetDbName}"`);
+      console.log(`Created PostgreSQL database: ${targetDbName}`);
     }
   } finally {
     await adminPool.end();
@@ -80,6 +85,13 @@ async function runVerification(): Promise<void> {
   });
 
   try {
+    const client = await pool.connect();
+    try {
+      await assertConnectedToTestDatabase(client, targetDbName);
+    } finally {
+      client.release();
+    }
+
     const health = await checkPostgresHealth(pool);
     if (!health.healthy) {
       throw new Error(`PostgreSQL health check failed: ${health.error ?? 'unknown error'}`);
