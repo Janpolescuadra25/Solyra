@@ -1,7 +1,34 @@
 import { createHash } from 'node:crypto';
-import type { AstValidationResult, BrainPackageManifest } from '@solyra/shared';
-import { validateBoundedAstProgram } from '../ast/validator.js';
+import type { AstValidationResult } from '@solyra/shared';
+import { evaluateAstProgram, validateBoundedAstProgram } from '../ast/index.js';
 import { globalBus } from '../neurobus/index.js';
+
+export interface BrainRuntimeConstraints {
+  maxMemoryBytes?: number;
+  maxMemoryMb?: number;
+  maxExecutionTimeMs?: number;
+  boundedAstDepth?: number;
+  maxSteps?: number;
+  allowedExternalCalls?: string[];
+}
+
+export interface BrainModuleReference {
+  name: string;
+  entryPoint: string;
+  sha256: string;
+  moduleType: 'DSL_RULESET' | 'INDEX_LOOKUP' | 'HEURISTIC' | 'GRAMMAR';
+  payload?: unknown;
+}
+
+export interface BrainPackageManifest {
+  schemaVersion: '1.0';
+  brainId: string;
+  version: string;
+  authorSignature?: string;
+  createdAt: number;
+  runtimeConstraints: BrainRuntimeConstraints;
+  modules: BrainModuleReference[];
+}
 
 export type BrainLifecycleState = 'UNLOADED' | 'VALIDATED' | 'ACTIVE' | 'REJECTED';
 
@@ -29,71 +56,85 @@ export class BrainPackageLoader {
     activeModulesCount: 0,
   };
 
-  public validateManifest(manifest: BrainPackageManifest): { valid: boolean; errors: string[] } {
+  public validateManifest(manifest: unknown): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
 
     if (!manifest || typeof manifest !== 'object') {
       return { valid: false, errors: ['Manifest payload is required'] };
     }
 
-    if (manifest.schemaVersion !== '1.0') {
+    const pkg = manifest as Record<string, unknown>;
+
+    if (pkg.schemaVersion !== '1.0') {
       errors.push('schemaVersion must be "1.0"');
     }
 
-    if (typeof manifest.brainId !== 'string' || manifest.brainId.trim().length === 0) {
+    if (typeof pkg.brainId !== 'string' || pkg.brainId.trim().length === 0) {
       errors.push('brainId must be a non-empty string');
     }
 
-    if (typeof manifest.version !== 'string' || manifest.version.trim().length === 0) {
+    if (typeof pkg.version !== 'string' || pkg.version.trim().length === 0) {
       errors.push('version must be a non-empty string');
     } else {
       const semver = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-      if (!semver.test(manifest.version) && manifest.version.trim().length > 0) {
+      if (!semver.test(pkg.version) && pkg.version.trim().length > 0) {
         // Accept non-empty versions that are not strictly semver to stay compatible with runtime manifests.
       }
     }
 
-    if (!manifest.runtimeConstraints || typeof manifest.runtimeConstraints !== 'object') {
+    const runtimeConstraints = pkg.runtimeConstraints;
+    if (!runtimeConstraints || typeof runtimeConstraints !== 'object') {
       errors.push('runtimeConstraints is required');
     } else {
-      const constraints = manifest.runtimeConstraints;
-      const positiveNumbers: Array<[string, number]> = [
-        ['maxMemoryBytes', constraints.maxMemoryBytes],
+      const constraints = runtimeConstraints as Record<string, unknown>;
+      const positiveNumbers: Array<[string, unknown]> = [
+        ['maxMemoryBytes', constraints.maxMemoryBytes ?? constraints.maxMemoryMb],
         ['maxExecutionTimeMs', constraints.maxExecutionTimeMs],
         ['boundedAstDepth', constraints.boundedAstDepth],
       ];
 
       for (const [name, value] of positiveNumbers) {
-        if (!Number.isFinite(value) || value <= 0) {
+        if (value === undefined) {
+          continue;
+        }
+        if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
           errors.push(`${name} must be a positive number`);
+        }
+      }
+
+      if (constraints.maxSteps !== undefined) {
+        const maxSteps = constraints.maxSteps;
+        if (typeof maxSteps !== 'number' || !Number.isInteger(maxSteps) || maxSteps <= 0) {
+          errors.push('runtimeConstraints.maxSteps must be a positive integer');
         }
       }
     }
 
-    if (!Array.isArray(manifest.modules)) {
+    if (!Array.isArray(pkg.modules)) {
       errors.push('modules must be an array');
     } else {
       const validTypes = new Set(['DSL_RULESET', 'INDEX_LOOKUP', 'HEURISTIC', 'GRAMMAR']);
-      for (const module of manifest.modules) {
+      for (const module of pkg.modules) {
         if (!module || typeof module !== 'object') {
           errors.push('Each module reference must be an object');
           continue;
         }
 
-        if (typeof module.name !== 'string' || module.name.trim().length === 0) {
+        const mod = module as Record<string, unknown>;
+        if (typeof mod.name !== 'string' || mod.name.trim().length === 0) {
           errors.push('Each module name must be a non-empty string');
         }
 
-        if (typeof module.entryPoint !== 'string' || module.entryPoint.trim().length === 0) {
-          errors.push(`Module ${module.name ?? '<unknown>'} has an invalid entryPoint`);
+        if (typeof mod.entryPoint !== 'string' || mod.entryPoint.trim().length === 0) {
+          errors.push(`Module ${String(mod.name ?? '<unknown>')} has an invalid entryPoint`);
         }
 
-        if (typeof module.sha256 !== 'string' || !/^[a-fA-F0-9]{64}$/.test(module.sha256)) {
-          errors.push(`Module ${module.name ?? '<unknown>'} has an invalid sha256 checksum`);
+        if (typeof mod.sha256 !== 'string' || !/^[a-fA-F0-9]{64}$/.test(mod.sha256)) {
+          errors.push(`Module ${String(mod.name ?? '<unknown>')} has an invalid sha256 checksum`);
         }
 
-        if (!validTypes.has(module.moduleType)) {
-          errors.push(`Module ${module.name ?? '<unknown>'} has an invalid moduleType`);
+        if (!validTypes.has(String(mod.moduleType))) {
+          errors.push(`Module ${String(mod.name ?? '<unknown>')} has an invalid moduleType`);
         }
       }
     }
@@ -194,6 +235,112 @@ export class BrainPackageLoader {
       totalUnloaded: this.stats.totalUnloaded,
       modulesCount: this.stats.activeModulesCount,
     };
+  }
+
+  public async executeModuleAst(
+    moduleId: string,
+    inputPayload: Record<string, unknown> = {},
+    contextOverrides: Record<string, unknown> = {},
+  ): Promise<{
+    success: boolean;
+    result?: unknown;
+    error?: string;
+    metrics: {
+      executionTimeMs: number;
+      stepsExecuted: number;
+    };
+  }> {
+    if (!this.activeManifest) {
+      throw new Error('No active brain package loaded');
+    }
+
+    const activeModule = this.activeManifest.modules.find((module) => module.name === moduleId);
+    if (!activeModule) {
+      throw new Error(`Module '${moduleId}' not found in active package`);
+    }
+
+    const rawPayload = ((activeModule as unknown) as Record<string, unknown>).payload;
+    if (rawPayload === undefined || rawPayload === null) {
+      throw new Error(`Module '${moduleId}' does not contain an executable AST`);
+    }
+
+    const validation = this.extractAndValidateAst(moduleId, rawPayload);
+    if (!validation.valid) {
+      const message = validation.errors
+        .map((entry) => typeof entry === 'string' ? entry : entry.message)
+        .join('; ');
+      throw new Error(message || `Module '${moduleId}' does not contain an executable AST`);
+    }
+
+    const timeoutMs = this.activeManifest.runtimeConstraints?.maxExecutionTimeMs ?? 5000;
+    const maxSteps = this.activeManifest.runtimeConstraints?.maxSteps ?? 1000;
+    const executionContext = { ...inputPayload, ...contextOverrides };
+
+    try {
+      const result = evaluateAstProgram(rawPayload as any, executionContext, {
+        timeoutMs,
+        maxSteps,
+      });
+
+      if (!result.success) {
+        globalBus.emit('brain:sandbox_violation', {
+          packageId: this.activeManifest.brainId,
+          moduleId,
+          reason: result.error ?? 'Sandbox violation',
+          executionTimeMs: result.executionTimeMs ?? 0,
+          stepsExecuted: result.stepsExecuted ?? 0,
+          success: false,
+          timestamp: Date.now(),
+        });
+
+        return {
+          success: false,
+          error: result.error,
+          metrics: {
+            executionTimeMs: result.executionTimeMs ?? 0,
+            stepsExecuted: result.stepsExecuted ?? 0,
+          },
+        };
+      }
+
+      globalBus.emit('brain:execution_completed', {
+        packageId: this.activeManifest.brainId,
+        moduleId,
+        executionTimeMs: result.executionTimeMs ?? 0,
+        stepsExecuted: result.stepsExecuted ?? 0,
+        success: true,
+        timestamp: Date.now(),
+      });
+
+      return {
+        success: true,
+        result: result.result,
+        metrics: {
+          executionTimeMs: result.executionTimeMs ?? 0,
+          stepsExecuted: result.stepsExecuted ?? 0,
+        },
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown runtime execution error';
+      globalBus.emit('brain:sandbox_violation', {
+        packageId: this.activeManifest.brainId,
+        moduleId,
+        reason: message,
+        executionTimeMs: 0,
+        stepsExecuted: 0,
+        success: false,
+        timestamp: Date.now(),
+      });
+
+      return {
+        success: false,
+        error: message,
+        metrics: {
+          executionTimeMs: 0,
+          stepsExecuted: 0,
+        },
+      };
+    }
   }
 
   public verifyModuleContent(

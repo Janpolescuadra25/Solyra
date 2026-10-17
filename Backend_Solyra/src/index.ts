@@ -156,6 +156,75 @@ export const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && requestPath === '/brain/execute') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    try {
+      const rawBody = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(rawBody)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Request body must be a JSON object' });
+        return;
+      }
+
+      const moduleId = typeof rawBody.moduleId === 'string' ? rawBody.moduleId.trim() : '';
+      if (!moduleId) {
+        sendJsonResponse(res, 400, {
+          success: false,
+          error: 'moduleId is required and must be a non-empty string',
+        });
+        return;
+      }
+
+      const activePackage = globalBrainLoader.getActivePackage();
+      if (!activePackage) {
+        sendJsonResponse(res, 400, {
+          success: false,
+          error: 'No active brain package loaded',
+        });
+        return;
+      }
+
+      if (!activePackage.modules.some((module) => module.name === moduleId)) {
+        sendJsonResponse(res, 400, {
+          success: false,
+          error: `Module '${moduleId}' not found in active package`,
+        });
+        return;
+      }
+
+      const executionResult = await globalBrainLoader.executeModuleAst(
+        moduleId,
+        isRecord(rawBody.input) ? rawBody.input as Record<string, unknown> : {},
+        isRecord(rawBody.contextOverrides) ? rawBody.contextOverrides as Record<string, unknown> : {},
+      );
+
+      if (executionResult.success) {
+        sendJsonResponse(res, 200, {
+          success: true,
+          result: executionResult.result,
+          metrics: executionResult.metrics,
+        });
+        return;
+      }
+
+      sendJsonResponse(res, 422, {
+        success: false,
+        error: executionResult.error ?? 'Sandbox execution failed',
+        metrics: executionResult.metrics,
+      });
+      return;
+    } catch (error) {
+      sendJsonResponse(res, 500, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal execution error',
+      });
+      return;
+    }
+  }
+
   if (req.method === 'GET' && requestPath === '/ast/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: true, stats: astStats }));
