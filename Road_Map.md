@@ -2,7 +2,6 @@
 
 ## Active Phase
 ### Milestone B: Brain Package Lifecycle & Distribution
-- [ ] **Step 3: Sandbox Isolation & Execution** — Sandboxed runtime execution reusing `evaluateAstProgram`, enforcing `maxExecutionTimeMs` timeout and computational step limits.
 - [ ] **Step 4: Package Lifecycle & Distribution** — Rollback safety, active package state management, and distribution packaging.
 
 ---
@@ -26,3 +25,4 @@
 - [x] **Phase 5.2: Dynamic AST Execution & Authoring Workbench** — Execution-safe AST evaluation, author feedback, standardized path pointers, diagnostic payloads, and runtime validation enforcement across `/ast/execute` and `/ast/workbench/inspect`.
 - [x] **Milestone B Step 1: Module Content SHA-256 Verification** — Cryptographic verification of module content against manifest hashes, `verifyModuleContent` in `BrainPackageLoader`, and `brain:module_hash_mismatch` telemetry on `globalBus` (`commit 97316fe810b82c9ab43f84e5c1eee273f29268ee`).
 - [x] **Step 2: Package AST Extraction & Validation** — Extraction of AST from `DSL_RULESET` module payloads, validation against manifest `boundedAstDepth`, and structured error reporting. (completed in commit 47fc9ec0b84a69cfa68c8d474a46a65071fff6d9)
+- [x] **Milestone B Step 3: Sandbox Isolation & Execution** (completed in commit 02fb0db168c9cea5437ea0e65e4c66595312f955)
