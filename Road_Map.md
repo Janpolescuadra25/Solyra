@@ -1,8 +1,7 @@
 # Solyra Roadmap
 
 ## Active Phase
-### Milestone B: Brain Package Lifecycle & Distribution
-- [ ] **Step 4: Package Lifecycle & Distribution** — Rollback safety, active package state management, and distribution packaging.
+*Milestone B (Brain Package Lifecycle & Distribution) is complete. Next active phase under architectural deliberation.*
 
 ---
 
