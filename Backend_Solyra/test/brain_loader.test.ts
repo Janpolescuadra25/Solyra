@@ -60,6 +60,59 @@ const invalidTypeManifest: BrainPackageManifest = {
   ],
 };
 
+const validAstProgram = {
+  version: '1.0',
+  programId: 'rule-ast',
+  maxDepth: 4,
+  body: [
+    {
+      type: 'BinaryExpression',
+      operator: 'AND',
+      left: {
+        type: 'BinaryExpression',
+        operator: 'GREATER_THAN',
+        left: { type: 'Identifier', name: 'score' },
+        right: { type: 'Literal', value: 10 },
+      },
+      right: {
+        type: 'BinaryExpression',
+        operator: 'EQUALS',
+        left: { type: 'Identifier', name: 'status' },
+        right: { type: 'Literal', value: 'active' },
+      },
+    },
+  ],
+};
+
+const deepAstProgram = {
+  version: '1.0',
+  programId: 'deep-rule-ast',
+  maxDepth: 8,
+  body: [
+    {
+      type: 'BinaryExpression',
+      operator: 'AND',
+      left: {
+        type: 'BinaryExpression',
+        operator: 'ADD',
+        left: {
+          type: 'BinaryExpression',
+          operator: 'SUBTRACT',
+          left: { type: 'Literal', value: 1 },
+          right: { type: 'Literal', value: 2 },
+        },
+        right: {
+          type: 'BinaryExpression',
+          operator: 'ADD',
+          left: { type: 'Literal', value: 3 },
+          right: { type: 'Literal', value: 4 },
+        },
+      },
+      right: { type: 'Literal', value: true },
+    },
+  ],
+};
+
 const events = {
   loaded: [] as Array<{ brainId: string; version: string }>,
   unloaded: [] as Array<{ brainId: string; version: string }>,
@@ -140,7 +193,87 @@ try {
   assert.ok(events.unloaded.some((entry) => entry.brainId === validManifest.brainId));
   console.log('✓ Package unload resets lifecycle state and telemetry');
 
-  // 5. verifyModuleContent verifies module content integrity and emits mismatch telemetry
+  // 5. AST extraction and validation enforces DSL_RULESET compliance and bounded depth
+  const astLoader = new (await import('../src/brain/loader.js')).BrainPackageLoader();
+  const astManifest: BrainPackageManifest = {
+    ...validManifest,
+    brainId: 'brain-ast-rules',
+    version: '2.0.0',
+    runtimeConstraints: {
+      ...validManifest.runtimeConstraints,
+      boundedAstDepth: 3,
+    },
+    modules: [
+      {
+        name: 'rule-ast-module',
+        entryPoint: 'dist/rule-ast-module.js',
+        sha256: 'b'.repeat(64),
+        moduleType: 'DSL_RULESET',
+      },
+    ],
+  };
+
+  const astLoad = astLoader.loadPackage(astManifest);
+  assert.strictEqual(astLoad, true);
+  const astFailureEvents: Array<{ moduleName: string; errors: string[] }> = [];
+  const unsubscribeAstFailure = globalBus.subscribe('brain:ast_validation_failed', (payload: any) => {
+    astFailureEvents.push({
+      moduleName: payload.moduleName,
+      errors: Array.isArray(payload.errors) ? payload.errors.map((entry: any) => typeof entry === 'string' ? entry : entry.message) : [],
+    });
+  });
+
+  const validAstResult = astLoader.extractAndValidateAst('rule-ast-module', validAstProgram);
+  assert.strictEqual(validAstResult.valid, true);
+  assert.deepStrictEqual(validAstResult.errors, []);
+  console.log('✓ AST extraction validates a compliant DSL_RULESET payload');
+
+  const deepValidation = astLoader.extractAndValidateAst('rule-ast-module', deepAstProgram);
+  assert.strictEqual(deepValidation.valid, false);
+  assert.ok(deepValidation.errors.length > 0);
+  assert.ok(astFailureEvents.some((entry) => entry.moduleName === 'rule-ast-module'));
+  console.log('✓ AST extraction enforces bounded depth and emits telemetry');
+
+  const wrongTypeLoader = new (await import('../src/brain/loader.js')).BrainPackageLoader();
+  const wrongTypeManifest: BrainPackageManifest = {
+    ...astManifest,
+    modules: [
+      { ...astManifest.modules[0], name: 'binary-module', moduleType: 'INDEX_LOOKUP' },
+    ],
+  };
+  assert.strictEqual(wrongTypeLoader.loadPackage(wrongTypeManifest), true);
+  const wrongTypeResult = wrongTypeLoader.extractAndValidateAst('binary-module', validAstProgram);
+  assert.strictEqual(wrongTypeResult.valid, false);
+  assert.match(wrongTypeResult.errors[0].message ?? '', /not of type DSL_RULESET/);
+  console.log('✓ AST extraction rejects non-DSL_RULESET modules');
+
+  const malformedJsonResult = astLoader.extractAndValidateAst('rule-ast-module', '{"version": "1.0"');
+  assert.strictEqual(malformedJsonResult.valid, false);
+  assert.ok(malformedJsonResult.errors.length > 0);
+  assert.ok(astFailureEvents.some((entry) => entry.moduleName === 'rule-ast-module' && entry.errors.some((message) => message.includes('Failed to parse AST JSON'))));
+  console.log('✓ AST extraction rejects malformed JSON payloads and emits telemetry');
+
+  const noPackageLoader = new (await import('../src/brain/loader.js')).BrainPackageLoader();
+  assert.throws(
+    () => noPackageLoader.extractAndValidateAst('rule-ast-module', validAstProgram),
+    /Cannot extract and validate AST: No active package loaded/
+  );
+  console.log('✓ AST extraction throws when no active package is loaded');
+
+  const missingModuleLoader = new (await import('../src/brain/loader.js')).BrainPackageLoader();
+  assert.strictEqual(missingModuleLoader.loadPackage(astManifest), true);
+  assert.throws(
+    () => missingModuleLoader.extractAndValidateAst('missing-module', validAstProgram),
+    /Module 'missing-module' not found in active package manifest/
+  );
+  console.log('✓ AST extraction throws when the target module is absent from the manifest');
+
+  unsubscribeAstFailure();
+  assert.strictEqual(astLoader.unloadPackage(), true);
+  assert.strictEqual(wrongTypeLoader.unloadPackage(), true);
+  assert.strictEqual(missingModuleLoader.unloadPackage(), true);
+
+  // 6. verifyModuleContent verifies module content integrity and emits mismatch telemetry
   const verificationLoader = new (await import('../src/brain/loader.js')).BrainPackageLoader();
   const verificationContent = 'export const handler = () => "ok";';
   const verificationHash = createHash('sha256').update(verificationContent, 'utf8').digest('hex');

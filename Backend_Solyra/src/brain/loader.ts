@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { BrainPackageManifest } from '@solyra/shared';
+import type { AstValidationResult, BrainPackageManifest } from '@solyra/shared';
+import { validateBoundedAstProgram } from '../ast/validator.js';
 import { globalBus } from '../neurobus/index.js';
 
 export type BrainLifecycleState = 'UNLOADED' | 'VALIDATED' | 'ACTIVE' | 'REJECTED';
@@ -233,5 +234,83 @@ export class BrainPackageLoader {
       valid: false,
       error: `Hash mismatch for module ${moduleName}: expected ${expectedHash}, got ${actualHash}`,
     };
+  }
+
+  /**
+   * Extracts and validates an AST program for a specified package module.
+   * Enforces DSL_RULESET module type, parses serialized input if provided,
+   * and validates AST structural integrity against package runtimeConstraints.boundedAstDepth.
+   * Emits 'brain:ast_validation_failed' on globalBus if validation fails.
+   *
+   * @param moduleName - The name of the module in the active package manifest
+   * @param astProgram - Raw AST object, JSON string, or Buffer containing serialized AST
+   * @returns AstValidationResult indicating validity and error details
+   */
+  public extractAndValidateAst(moduleName: string, astProgram: unknown): AstValidationResult {
+    if (!this.activeManifest) {
+      throw new Error('Cannot extract and validate AST: No active package loaded');
+    }
+
+    const mod = this.activeManifest.modules.find((m) => m.name === moduleName);
+    if (!mod) {
+      throw new Error(`Module '${moduleName}' not found in active package manifest`);
+    }
+
+    if (mod.moduleType !== 'DSL_RULESET') {
+      const message = `Module '${moduleName}' is not of type DSL_RULESET (found: ${mod.moduleType})`;
+      globalBus.emit('brain:ast_validation_failed', {
+        moduleName,
+        errors: [message],
+        timestamp: Date.now(),
+      });
+      return {
+        valid: false,
+        errors: [{
+          path: 'module',
+          code: 'INVALID_MODULE_TYPE',
+          message,
+        }],
+      };
+    }
+
+    let parsedAst = astProgram;
+    if (typeof astProgram === 'string' || Buffer.isBuffer(astProgram)) {
+      try {
+        const rawStr = typeof astProgram === 'string' ? astProgram : astProgram.toString('utf-8');
+        parsedAst = JSON.parse(rawStr);
+      } catch (err) {
+        const parseError = `Failed to parse AST JSON: ${(err as Error).message}`;
+        globalBus.emit('brain:ast_validation_failed', {
+          moduleName,
+          errors: [parseError],
+          timestamp: Date.now(),
+        });
+        return {
+          valid: false,
+          errors: [{
+            path: 'root',
+            code: 'INVALID_AST_JSON',
+            message: parseError,
+          }],
+        };
+      }
+    }
+
+    const maxDepth = this.activeManifest.runtimeConstraints?.boundedAstDepth ?? 10;
+    const normalizedAst = (parsedAst && typeof parsedAst === 'object')
+      ? { ...parsedAst, maxDepth }
+      : parsedAst;
+
+    const result = validateBoundedAstProgram(normalizedAst, { maxDepth });
+
+    if (!result.valid) {
+      globalBus.emit('brain:ast_validation_failed', {
+        moduleName,
+        errors: result.errors.map((entry) => typeof entry === 'string' ? entry : entry.message),
+        timestamp: Date.now(),
+      });
+    }
+
+    return result;
   }
 }

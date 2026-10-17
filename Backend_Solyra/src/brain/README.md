@@ -69,14 +69,44 @@ If the runtime hash does not match the manifest checksum, the loader emits:
 
 through `globalBus` with the `brainId`, `moduleName`, `expected`, `actual`, and `timestamp` payload fields.
 
+## API Reference
+
+### `extractAndValidateAst(moduleName, astProgram): AstValidationResult`
+
+`extractAndValidateAst` gates AST payloads before they enter the execution pipeline. It verifies that the active module is of type `DSL_RULESET`, parses JSON string or Buffer payloads when needed, and validates the resulting AST against the active package's `runtimeConstraints.boundedAstDepth` bound.
+
+```ts
+const validation = loader.extractAndValidateAst('rule-module', serializedAst);
+if (!validation.valid) {
+  console.error(validation.errors);
+}
+```
+
+The method returns the validation result from `validateBoundedAstProgram`, including any structural, depth, and typing failures encountered.
+
 ## Telemetry Exposure
 
 The runtime exposes `/brain/stats` to report the package lifecycle and loader metrics. The endpoint returns the current state, active package identifier, version, loaded timestamp, total load/failure/unload counters, and active module count.
 
+### `brain:ast_validation_failed`
+
+The loader emits `brain:ast_validation_failed` when a `DSL_RULESET` payload fails AST validation. The payload includes:
+
+```ts
+{
+  moduleName: string;
+  errors: string[];
+  timestamp: number;
+}
+```
+
+This event is emitted for module type mismatches, malformed JSON, and bounded-depth/structural validation failures.
+
 ## Current Status
 
-**Subsystem Status:** Milestone B: In Progress (Step 1 DONE)  
+**Subsystem Status:** Milestone B: In Progress (Steps 1–2 DONE)  
 **Verification Date:** 2026-10-17  
-**Step 1 Summary:** Implemented cryptographic module content verification via `verifyModuleContent`, SHA-256 hash checks with UTF-8/Buffer handling, and `brain:module_hash_mismatch` security event emission on `globalBus`.
+**Step 1 Summary:** Implemented cryptographic module content verification via `verifyModuleContent`, SHA-256 hash checks with UTF-8/Buffer handling, and `brain:module_hash_mismatch` security event emission on `globalBus`.  
+**Step 2 Summary:** Added `extractAndValidateAst`, enforced package-level `boundedAstDepth` validation for `DSL_RULESET` modules, and emitted `brain:ast_validation_failed` telemetry for malformed, mismatched, and over-depth AST payloads.
 
-The loader now verifies module content integrity against the per-module SHA-256 checksum before runtime use, and the associated regression tests cover valid, mismatched, unloaded, and unknown-module cases.
+The loader now verifies both module content integrity and AST structural soundness before runtime use, and the associated regression tests cover valid, mismatched, malformed, unloaded, missing-module, and depth-violation cases.
