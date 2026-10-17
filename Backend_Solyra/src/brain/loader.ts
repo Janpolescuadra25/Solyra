@@ -45,6 +45,8 @@ export interface BrainLoaderStats {
 
 export class BrainPackageLoader {
   private activeManifest: BrainPackageManifest | null = null;
+  private packageHistory: BrainPackageManifest[] = [];
+  private readonly maxHistoryLength = 20;
   private currentState: BrainLifecycleState = 'UNLOADED';
   private readonly stats = {
     totalLoaded: 0,
@@ -55,6 +57,25 @@ export class BrainPackageLoader {
     loadedAt: null as number | null,
     activeModulesCount: 0,
   };
+
+  private cloneManifest(manifest: BrainPackageManifest): BrainPackageManifest {
+    return JSON.parse(JSON.stringify(manifest)) as BrainPackageManifest;
+  }
+
+  private updateActiveStats(manifest: BrainPackageManifest | null): void {
+    if (!manifest) {
+      this.stats.activePackageId = null;
+      this.stats.activeVersion = null;
+      this.stats.loadedAt = null;
+      this.stats.activeModulesCount = 0;
+      return;
+    }
+
+    this.stats.activePackageId = manifest.brainId;
+    this.stats.activeVersion = manifest.version;
+    this.stats.loadedAt = Date.now();
+    this.stats.activeModulesCount = manifest.modules.length;
+  }
 
   public validateManifest(manifest: unknown): { valid: boolean; errors: string[] } {
     const errors: string[] = [];
@@ -146,6 +167,12 @@ export class BrainPackageLoader {
   }
 
   public loadPackage(manifest: BrainPackageManifest): boolean {
+    globalBus.emit('brain:load_initiated', {
+      packageId: manifest?.brainId ?? 'unknown',
+      version: manifest?.version ?? 'unknown',
+      timestamp: new Date().toISOString(),
+    });
+
     const validation = this.validateManifest(manifest);
     if (!validation.valid) {
       this.stats.totalFailed++;
@@ -160,6 +187,10 @@ export class BrainPackageLoader {
     }
 
     if (this.activeManifest) {
+      this.packageHistory.unshift(this.cloneManifest(this.activeManifest));
+      if (this.packageHistory.length > this.maxHistoryLength) {
+        this.packageHistory = this.packageHistory.slice(0, this.maxHistoryLength);
+      }
       globalBus.emit('brain:package_unloaded', {
         brainId: this.activeManifest.brainId,
         version: this.activeManifest.version,
@@ -167,45 +198,196 @@ export class BrainPackageLoader {
       });
     }
 
-    this.activeManifest = manifest;
+    this.activeManifest = this.cloneManifest(manifest);
     this.currentState = 'ACTIVE';
     this.stats.totalLoaded++;
-    this.stats.activePackageId = manifest.brainId;
-    this.stats.activeVersion = manifest.version;
-    this.stats.loadedAt = Date.now();
-    this.stats.activeModulesCount = manifest.modules.length;
+    this.updateActiveStats(this.activeManifest);
 
     globalBus.emit('brain:package_loaded', {
-      brainId: manifest.brainId,
-      version: manifest.version,
-      moduleCount: manifest.modules.length,
+      brainId: this.activeManifest.brainId,
+      version: this.activeManifest.version,
+      moduleCount: this.activeManifest.modules.length,
       timestamp: Date.now(),
     });
 
     return true;
   }
 
-  public unloadPackage(): boolean {
-    if (!this.activeManifest) {
-      return false;
+  public getPackageHistory(): Array<{
+    id: string;
+    version: string;
+    name: string;
+    moduleCount: number;
+    archivedAt?: string;
+  }> {
+    return this.packageHistory.map((manifest) => ({
+      id: manifest.brainId,
+      version: manifest.version,
+      name: manifest.brainId,
+      moduleCount: manifest.modules.length,
+      archivedAt: new Date().toISOString(),
+    }));
+  }
+
+  public rollbackPackage(): { success: boolean; error?: string; rolledBackTo?: { id: string; version: string } } {
+    if (this.packageHistory.length === 0) {
+      return { success: false, error: 'No previous package in history to rollback to' };
     }
 
-    const previous = this.activeManifest;
+    const currentPackage = this.activeManifest ? this.cloneManifest(this.activeManifest) : null;
+
+    globalBus.emit('brain:package_rollback_initiated', {
+      currentPackageId: currentPackage?.brainId ?? null,
+      historyDepth: this.packageHistory.length,
+      timestamp: Date.now(),
+    });
+
+    if (currentPackage) {
+      globalBus.emit('brain:package_unloaded', {
+        brainId: currentPackage.brainId,
+        version: currentPackage.version,
+        timestamp: Date.now(),
+      });
+    }
+
+    const previousManifest = this.packageHistory.pop();
+    if (!previousManifest) {
+      return { success: false, error: 'No previous package in history to rollback to' };
+    }
+
+    this.activeManifest = this.cloneManifest(previousManifest);
+    this.currentState = 'ACTIVE';
+    this.stats.totalLoaded++;
+    this.updateActiveStats(this.activeManifest);
+
+    globalBus.emit('brain:package_rollback_completed', {
+      rolledBackTo: { id: this.activeManifest.brainId, version: this.activeManifest.version },
+      timestamp: Date.now(),
+    });
+
+    globalBus.emit('brain:package_loaded', {
+      brainId: this.activeManifest.brainId,
+      version: this.activeManifest.version,
+      moduleCount: this.activeManifest.modules.length,
+      timestamp: Date.now(),
+    });
+
+    return {
+      success: true,
+      rolledBackTo: { id: this.activeManifest.brainId, version: this.activeManifest.version },
+    };
+  }
+
+  public activatePackage(id: string, version: string): { success: boolean; error?: string; message?: string; activated?: { id: string; version: string } } {
+    if (this.activeManifest && this.activeManifest.brainId === id && this.activeManifest.version === version) {
+      return { success: true, message: 'Package already active' };
+    }
+
+    const matchIndex = this.packageHistory.findIndex((manifest) => manifest.brainId === id && manifest.version === version);
+    if (matchIndex === -1) {
+      return { success: false, error: 'Package version not found in history' };
+    }
+
+    const targetManifest = this.cloneManifest(this.packageHistory[matchIndex]);
+    this.packageHistory.splice(matchIndex, 1);
+
+    if (this.activeManifest) {
+      this.packageHistory.unshift(this.cloneManifest(this.activeManifest));
+      if (this.packageHistory.length > this.maxHistoryLength) {
+        this.packageHistory = this.packageHistory.slice(0, this.maxHistoryLength);
+      }
+    }
+
+    this.activeManifest = targetManifest;
+    this.currentState = 'ACTIVE';
+    this.updateActiveStats(this.activeManifest);
+
+    globalBus.emit('brain:package_activated', {
+      packageId: id,
+      version,
+      timestamp: Date.now(),
+    });
+
+    globalBus.emit('brain:package_loaded', {
+      brainId: this.activeManifest.brainId,
+      version: this.activeManifest.version,
+      moduleCount: this.activeManifest.modules.length,
+      timestamp: Date.now(),
+    });
+
+    return {
+      success: true,
+      activated: { id, version },
+    };
+  }
+
+  public deactivatePackage(): { success: boolean; error?: string; deactivated?: { id: string; version: string } } {
+    if (!this.activeManifest) {
+      return { success: false, error: 'No package currently active' };
+    }
+
+    const current = this.cloneManifest(this.activeManifest);
+    this.packageHistory.unshift(current);
+    if (this.packageHistory.length > this.maxHistoryLength) {
+      this.packageHistory = this.packageHistory.slice(0, this.maxHistoryLength);
+    }
+
+    globalBus.emit('brain:package_deactivated', {
+      packageId: current.brainId,
+      version: current.version,
+      timestamp: Date.now(),
+    });
+
     globalBus.emit('brain:package_unloaded', {
-      brainId: previous.brainId,
-      version: previous.version,
+      brainId: current.brainId,
+      version: current.version,
       timestamp: Date.now(),
     });
 
     this.stats.totalUnloaded++;
-    this.stats.activePackageId = null;
-    this.stats.activeVersion = null;
-    this.stats.loadedAt = null;
-    this.stats.activeModulesCount = 0;
     this.activeManifest = null;
     this.currentState = 'UNLOADED';
+    this.updateActiveStats(null);
 
-    return true;
+    return {
+      success: true,
+      deactivated: { id: current.brainId, version: current.version },
+    };
+  }
+
+  public exportPackage(id?: string, version?: string): { success: boolean; error?: string; bundle?: BrainPackageManifest } {
+    let candidate: BrainPackageManifest | null = null;
+
+    if (id && version) {
+      candidate = this.activeManifest && this.activeManifest.brainId === id && this.activeManifest.version === version
+        ? this.cloneManifest(this.activeManifest)
+        : this.packageHistory.find((manifest) => manifest.brainId === id && manifest.version === version) ?? null;
+    } else if (this.activeManifest) {
+      candidate = this.cloneManifest(this.activeManifest);
+    } else if (id) {
+      candidate = this.packageHistory.find((manifest) => manifest.brainId === id) ?? null;
+    }
+
+    if (!candidate) {
+      return { success: false, error: 'Package not found for export' };
+    }
+
+    const bundle = this.cloneManifest(candidate);
+    globalBus.emit('brain:package_exported', {
+      packageId: bundle.brainId,
+      version: bundle.version,
+      timestamp: Date.now(),
+    });
+
+    return {
+      success: true,
+      bundle,
+    };
+  }
+
+  public unloadPackage(): boolean {
+    const result = this.deactivatePackage();
+    return result.success;
   }
 
   public getActivePackage(): BrainPackageManifest | null {

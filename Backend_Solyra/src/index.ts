@@ -156,6 +156,165 @@ export const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && requestPath === '/brain/load') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    try {
+      const rawBody = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(rawBody) || !isRecord(rawBody.manifest)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Manifest payload is required' });
+        return;
+      }
+
+      const manifest = rawBody.manifest as Record<string, unknown>;
+      const validation = globalBrainLoader.validateManifest(manifest);
+      if (!validation.valid) {
+        sendJsonResponse(res, 422, {
+          success: false,
+          error: 'Manifest validation failed',
+          details: validation.errors,
+        });
+        return;
+      }
+
+      const loaded = globalBrainLoader.loadPackage(manifest as any);
+      if (!loaded) {
+        sendJsonResponse(res, 422, { success: false, error: 'Manifest validation failed' });
+        return;
+      }
+
+      sendJsonResponse(res, 200, {
+        success: true,
+        package: {
+          id: manifest.brainId,
+          version: manifest.version,
+        },
+        stats: globalBrainLoader.getLoaderStats(),
+      });
+      return;
+    } catch (error) {
+      sendJsonResponse(res, 500, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal load error',
+      });
+      return;
+    }
+  }
+
+  if (req.method === 'POST' && requestPath === '/brain/unload') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    const result = globalBrainLoader.deactivatePackage();
+    if (!result.success) {
+      sendJsonResponse(res, 400, { success: false, error: result.error ?? 'No active package to unload' });
+      return;
+    }
+
+    sendJsonResponse(res, 200, { success: true, result });
+    return;
+  }
+
+  if (req.method === 'POST' && requestPath === '/brain/rollback') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    const result = globalBrainLoader.rollbackPackage();
+    if (!result.success) {
+      sendJsonResponse(res, 400, { success: false, error: result.error ?? 'Rollback failed' });
+      return;
+    }
+
+    sendJsonResponse(res, 200, { success: true, rolledBackTo: result.rolledBackTo });
+    return;
+  }
+
+  if (req.method === 'GET' && requestPath === '/brain/history') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    sendJsonResponse(res, 200, {
+      success: true,
+      history: globalBrainLoader.getPackageHistory(),
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && requestPath === '/brain/export') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    const urlObj = new URL(req.url || '/', 'http://localhost');
+    const id = urlObj.searchParams.get('id') ?? undefined;
+    const version = urlObj.searchParams.get('version') ?? undefined;
+    const result = globalBrainLoader.exportPackage(id, version);
+
+    if (!result.success) {
+      sendJsonResponse(res, 404, { success: false, error: result.error ?? 'Package not found for export' });
+      return;
+    }
+
+    sendJsonResponse(res, 200, { success: true, bundle: result.bundle });
+    return;
+  }
+
+  if (req.method === 'POST' && requestPath === '/brain/activate') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    try {
+      const rawBody = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(rawBody) || typeof rawBody.id !== 'string' || typeof rawBody.version !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'Body requires id and version strings' });
+        return;
+      }
+
+      const result = globalBrainLoader.activatePackage(rawBody.id, rawBody.version);
+      if (!result.success) {
+        sendJsonResponse(res, 404, { success: false, error: result.error ?? 'Package version not found in history' });
+        return;
+      }
+
+      sendJsonResponse(res, 200, { success: true, result });
+      return;
+    } catch (error) {
+      sendJsonResponse(res, 500, {
+        success: false,
+        error: error instanceof Error ? error.message : 'Internal activation error',
+      });
+      return;
+    }
+  }
+
+  if (req.method === 'POST' && requestPath === '/brain/deactivate') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
+      return;
+    }
+
+    const result = globalBrainLoader.deactivatePackage();
+    if (!result.success) {
+      sendJsonResponse(res, 400, { success: false, error: result.error ?? 'No package currently active' });
+      return;
+    }
+
+    sendJsonResponse(res, 200, { success: true, result });
+    return;
+  }
+
   if (req.method === 'POST' && requestPath === '/brain/execute') {
     if (!authenticateProtectedRequest(req)) {
       sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });

@@ -104,13 +104,129 @@ This event is emitted for module type mismatches, malformed JSON, and bounded-de
 
 ## Current Status
 
-**Subsystem Status:** Milestone B: Step 3 Implemented (Steps 1–3 DONE)  
+**Subsystem Status:** Milestone B: Step 4 Implemented (Steps 1–4 COMPLETE)  
 **Verification Date:** 2026-10-18  
 **Step 1 Summary:** Implemented cryptographic module content verification via `verifyModuleContent`, SHA-256 hash checks with UTF-8/Buffer handling, and `brain:module_hash_mismatch` security event emission on `globalBus`.  
 **Step 2 Summary:** Added `extractAndValidateAst`, enforced package-level `boundedAstDepth` validation for `DSL_RULESET` modules, and emitted `brain:ast_validation_failed` telemetry for malformed, mismatched, and over-depth AST payloads.  
-**Step 3 Summary:** Added sandbox-aware AST execution through `executeModuleAst`, enforced manifest runtime constraints (`maxSteps`, `maxExecutionTimeMs`), and exposed the authenticated `POST /brain/execute` endpoint with structured success and violation telemetry.
+**Step 3 Summary:** Added sandbox-aware AST execution through `executeModuleAst`, enforced manifest runtime constraints (`maxSteps`, `maxExecutionTimeMs`), and exposed the authenticated `POST /brain/execute` endpoint with structured success and violation telemetry.  
+**Step 4 Summary:** Added package history tracking, rollback safety, version activation/deactivation, export package bundling, and authenticated lifecycle endpoints for complete package lifecycle management.
 
-The loader now verifies both module content integrity and AST structural soundness before runtime use, and the runtime enforces hard execution ceilings in fail-closed fashion to prevent unbounded CPU use.
+The loader now verifies module integrity, validates AST structure, enforces sandbox limits, and safely manages versioned package history before any runtime use.
+
+## Package Lifecycle Management
+
+The `BrainPackageLoader` maintains a bounded `packageHistory` list that records prior active manifests. This history provides the rollback safety needed for controlled package transitions and version switching without losing the last-good runtime package.
+
+### `packageHistory`
+
+Each time a new manifest is successfully loaded while another package is active, the active manifest is cloned and inserted into `packageHistory` at the head of the list. The list is capped at `maxHistoryLength = 20` to bound memory usage and preserve a narrow rollback window.
+
+### Rollback Safety
+
+`rollbackPackage()` removes the most recent historical manifest, restores it as the active manifest, and emits:
+
+- `brain:package_rollback_initiated`
+- `brain:package_rollback_completed`
+
+The method fails cleanly when no prior history exists, returning a structured `{ success: false, error: ... }` result.
+
+### Version Switching
+
+`activatePackage(id, version)` searches the loaded history for the requested package version, temporarily restores it as the active manifest, and emits `brain:package_activated` telemetry. `deactivatePackage()` moves the current manifest into history, clears the active package, and emits `brain:package_deactivated`.
+
+### Export Packaging
+
+`exportPackage(id?, version?)` returns a deep-copied manifest bundle suitable for distribution or archival. The result is emitted through `brain:package_exported` and is safe to serialize without mutating the in-memory loader state.
+
+## HTTP API Reference
+
+The backend exposes authenticated lifecycle endpoints under the `/brain/*` route group. Every lifecycle endpoint requires a valid Bearer token using `authenticateProtectedRequest`.
+
+### `POST /brain/load`
+
+Loads a manifest payload into the package lifecycle manager.
+
+Request body:
+
+```json
+{
+  "manifest": {
+    "schemaVersion": "1.0",
+    "brainId": "brain-alpha",
+    "version": "1.2.3",
+    "createdAt": 1730000000000,
+    "runtimeConstraints": {
+      "maxExecutionTimeMs": 5000,
+      "boundedAstDepth": 12,
+      "maxSteps": 200
+    },
+    "modules": []
+  }
+}
+```
+
+Responses:
+
+- `200 OK` — manifest accepted and active
+- `422 Unprocessable Entity` — manifest validation failed
+- `400 Bad Request` — missing or malformed body
+- `401 Unauthorized` — invalid or missing bearer token
+
+### `POST /brain/unload`
+
+Deactivates the active package and moves it into history.
+
+### `POST /brain/rollback`
+
+Restores the latest manifest in history as the active package.
+
+### `GET /brain/history`
+
+Returns a JSON list of package versions retained in `packageHistory`.
+
+### `GET /brain/export`
+
+Exports a package bundle by optional query parameters:
+
+```http
+GET /brain/export?id=brain-alpha&version=1.2.3
+```
+
+### `POST /brain/activate`
+
+Activates a historical package version.
+
+Body:
+
+```json
+{
+  "id": "brain-alpha",
+  "version": "1.2.3"
+}
+```
+
+### `POST /brain/deactivate`
+
+Deactivates the current runtime package and clears the active loader state.
+
+## NeuroBus Lifecycle Events
+
+The package lifecycle emits the following events through `globalBus`.
+
+| Event | Purpose |
+| --- | --- |
+| `brain:load_initiated` | Fires before a manifest is accepted or rejected to mark the start of a package load cycle. |
+| `brain:package_loaded` | Emitted after the manifest is successfully attached as `activeManifest`. |
+| `brain:package_unloaded` | Emitted when the active package is leaving the active state. |
+| `brain:package_rollback_initiated` | Emitted before a rollback restores the previous package version. |
+| `brain:package_rollback_completed` | Emitted after a successful rollback restores the package to active state. |
+| `brain:package_activated` | Emitted after historical version activation succeeds. |
+| `brain:package_deactivated` | Emitted after active package deactivation succeeds. |
+| `brain:package_exported` | Emitted when a deep-copied package bundle is created for distribution. |
+
+## Current Status
+
+The Brain package subsystem now supports versioned lifecycle management, rollback safety, activation/deactivation control, distribution packaging, and authenticated HTTP management endpoints. This completes Milestone B Step 4 while preserving the earlier fail-closed validation and sandbox execution guarantees from Steps 1–3.
 
 ## Runtime Constraints & Sandbox Execution
 

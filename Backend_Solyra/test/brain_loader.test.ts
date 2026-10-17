@@ -335,6 +335,120 @@ try {
   console.log('✓ Module content verification validates correct hashes and emits mismatch telemetry');
   console.log('✓ Module content verification rejects missing active package and unknown modules');
 
+  const { BrainPackageLoader } = await import('../src/brain/loader.js');
+
+  const lifecycleManifestV1: BrainPackageManifest = {
+    ...validManifest,
+    brainId: 'brain-lifecycle',
+    version: '1.0.0',
+    modules: [
+      {
+        ...validManifest.modules[0],
+        name: 'lifecycle-core',
+        sha256: 'a'.repeat(64),
+      },
+    ],
+  };
+
+  const lifecycleManifestV2: BrainPackageManifest = {
+    ...lifecycleManifestV1,
+    version: '2.0.0',
+    modules: [
+      {
+        ...lifecycleManifestV1.modules[0],
+        name: 'lifecycle-core-v2',
+        sha256: 'b'.repeat(64),
+      },
+    ],
+  };
+
+  const historyLoader = new BrainPackageLoader();
+  assert.strictEqual(historyLoader.loadPackage(lifecycleManifestV1), true);
+  assert.strictEqual(historyLoader.loadPackage(lifecycleManifestV2), true);
+  assert.strictEqual(historyLoader.getPackageHistory().length, 1);
+  assert.strictEqual(historyLoader.getPackageHistory()[0].id, 'brain-lifecycle');
+  assert.strictEqual(historyLoader.getActivePackage()?.version, '2.0.0');
+  console.log('✓ Sequential loads preserve previous versions in packageHistory');
+
+  const rollbackLoader = new BrainPackageLoader();
+  assert.strictEqual(rollbackLoader.loadPackage(lifecycleManifestV1), true);
+  assert.strictEqual(rollbackLoader.loadPackage(lifecycleManifestV2), true);
+  const rollbackResult = rollbackLoader.rollbackPackage();
+  assert.strictEqual(rollbackResult.success, true);
+  assert.strictEqual(rollbackResult.rolledBackTo?.version, '1.0.0');
+  assert.strictEqual(rollbackLoader.getActivePackage()?.version, '1.0.0');
+  console.log('✓ rollbackPackage restores the previous manifest and emits rollback telemetry');
+
+  const emptyRollbackLoader = new BrainPackageLoader();
+  const emptyRollback = emptyRollbackLoader.rollbackPackage();
+  assert.strictEqual(emptyRollback.success, false);
+  assert.match(emptyRollback.error ?? '', /No previous package in history to rollback to/);
+  console.log('✓ rollbackPackage fails cleanly when history is empty');
+
+  const activationLoader = new BrainPackageLoader();
+  assert.strictEqual(activationLoader.loadPackage(lifecycleManifestV1), true);
+  assert.strictEqual(activationLoader.loadPackage(lifecycleManifestV2), true);
+  const activated = activationLoader.activatePackage('brain-lifecycle', '1.0.0');
+  assert.strictEqual(activated.success, true);
+  assert.strictEqual(activationLoader.getActivePackage()?.version, '1.0.0');
+  console.log('✓ activatePackage restores a historical version and updates activeManifest');
+
+  const deactivationLoader = new BrainPackageLoader();
+  assert.strictEqual(deactivationLoader.loadPackage(lifecycleManifestV1), true);
+  const deactivated = deactivationLoader.deactivatePackage();
+  assert.strictEqual(deactivated.success, true);
+  assert.strictEqual(deactivationLoader.getActivePackage(), null);
+  assert.strictEqual(deactivationLoader.getLifecycleState(), 'UNLOADED');
+  assert.strictEqual(deactivationLoader.getPackageHistory().length, 1);
+  console.log('✓ deactivatePackage clears active package state without purging packageHistory');
+
+  const exportLoader = new BrainPackageLoader();
+  assert.strictEqual(exportLoader.loadPackage(lifecycleManifestV2), true);
+  const exportResult = exportLoader.exportPackage('brain-lifecycle', '2.0.0');
+  assert.strictEqual(exportResult.success, true);
+  assert.deepStrictEqual(exportResult.bundle.modules, lifecycleManifestV2.modules);
+  assert.notStrictEqual(exportResult.bundle, exportLoader.getActivePackage());
+  console.log('✓ exportPackage returns a deep-copied bundle with valid manifest content');
+
+  const lifecycleEvents: Record<string, number> = {};
+  const unsubscribeLifecycleTelemetry = globalBus.subscribe('brain:load_initiated', () => {
+    lifecycleEvents['brain:load_initiated'] = (lifecycleEvents['brain:load_initiated'] ?? 0) + 1;
+  });
+  globalBus.subscribe('brain:package_rollback_initiated', () => {
+    lifecycleEvents['brain:package_rollback_initiated'] = (lifecycleEvents['brain:package_rollback_initiated'] ?? 0) + 1;
+  });
+  globalBus.subscribe('brain:package_rollback_completed', () => {
+    lifecycleEvents['brain:package_rollback_completed'] = (lifecycleEvents['brain:package_rollback_completed'] ?? 0) + 1;
+  });
+  globalBus.subscribe('brain:package_activated', () => {
+    lifecycleEvents['brain:package_activated'] = (lifecycleEvents['brain:package_activated'] ?? 0) + 1;
+  });
+  globalBus.subscribe('brain:package_deactivated', () => {
+    lifecycleEvents['brain:package_deactivated'] = (lifecycleEvents['brain:package_deactivated'] ?? 0) + 1;
+  });
+  globalBus.subscribe('brain:package_exported', () => {
+    lifecycleEvents['brain:package_exported'] = (lifecycleEvents['brain:package_exported'] ?? 0) + 1;
+  });
+
+  const telemetryLoader = new BrainPackageLoader();
+  assert.strictEqual(telemetryLoader.loadPackage(lifecycleManifestV1), true);
+  assert.strictEqual(telemetryLoader.loadPackage(lifecycleManifestV2), true);
+  assert.strictEqual(telemetryLoader.rollbackPackage().success, true);
+  assert.strictEqual(telemetryLoader.getActivePackage()?.version, '1.0.0');
+  assert.strictEqual(telemetryLoader.loadPackage(lifecycleManifestV2), true);
+  assert.strictEqual(telemetryLoader.activatePackage('brain-lifecycle', '1.0.0').success, true);
+  assert.strictEqual(telemetryLoader.getActivePackage()?.version, '1.0.0');
+  assert.strictEqual(telemetryLoader.deactivatePackage().success, true);
+  assert.strictEqual(telemetryLoader.exportPackage('brain-lifecycle', '1.0.0').success, true);
+  assert.ok(lifecycleEvents['brain:load_initiated'] >= 1);
+  assert.ok(lifecycleEvents['brain:package_rollback_initiated'] >= 1);
+  assert.ok(lifecycleEvents['brain:package_rollback_completed'] >= 1);
+  assert.ok(lifecycleEvents['brain:package_activated'] >= 1);
+  assert.ok(lifecycleEvents['brain:package_deactivated'] >= 1);
+  assert.ok(lifecycleEvents['brain:package_exported'] >= 1);
+  unsubscribeLifecycleTelemetry();
+  console.log('✓ lifecycle telemetry emits rollback, activation, deactivation, export, and load events');
+
   // 6. Telemetry endpoint returns JSON structure
   await new Promise<void>((resolve, reject) => {
     server.listen(0, '127.0.0.1', () => resolve());
