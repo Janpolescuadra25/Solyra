@@ -1,26 +1,32 @@
-﻿# Auth Foundation Layer (Step 1 Completed)
-✅ **STATUS: DONE** — Completed in commit 1270b849c1c97512ac76706b08cb452351e3de5c
+﻿# Auth Core Layer (Step 2 Completed)
+✅ **STATUS: DONE** — Step 2 core authentication and session backend implemented for the Full-Stack Application Layer.
 
-## Implementation Details
-This directory contains core authentication and cryptographic utilities for Solyra's backend, implementing the foundation layer requirements from Road_Map.md Step 1.
+## Architecture Overview
+This module contains the backend authentication stack for Solyra, covering persistence repositories, atomic signup transactions, JWT session validation, and HTTP route protection.
 
-## Files Involved
-- `Backend_Solyra/src/auth/utils.ts`: Core crypto, password hashing, and JWT session utilities
-- `Backend_Solyra/test/auth_utils.test.ts`: Unit test suite verifying hashing, token generation, and JWT signing/verification
-- `Shared_Sol/src/contracts.verify.ts` & `Shared_Sol/src/index.ts`: Extended shared domain models (`AccountState`, `AuthSession`, `AuditEventType`, `AuditEvent`, `EmailOutboxEntry`, `AuthToken`)
-- `Backend_Solyra/src/persistence/postgres/schema.sql`: PostgreSQL schema definitions for `sessions`, `tokens`, `email_outbox`, and `audit_events` tables with indexes and foreign keys
-- `Backend_Solyra/src/persistence/postgres/rollback_schema.sql`: Updated drop order for clean database rollback
+## Components
+- `Backend_Solyra/src/auth/utils.ts`: Password hashing, SHA-256 token hashing, secure token generation, and JWT signing/verification.
+- `Backend_Solyra/src/auth/service.ts`: `AuthService` coordinating signup, login, logout, email verification, and current-user retrieval.
+- `Backend_Solyra/src/auth/middleware.ts`: Bearer-token validation, rate limiting, and custom `req.user` / `req.session` augmentation.
+- `Backend_Solyra/src/persistence/postgres/repositories/session.repository.ts`: Session persistence using the verified UUID-backed schema.
+- `Backend_Solyra/src/persistence/postgres/repositories/email-outbox.repository.ts`: Transactional email queue and status tracking.
+- `Backend_Solyra/src/persistence/postgres/repositories/audit-event.repository.ts`: Structured audit trail persistence.
+- `Backend_Solyra/src/index.ts`: Auth route mounting, CORS, rate limiting, and unified JSON response handling.
 
-## Key Utilities Implemented
-1. `hashPassword / comparePassword`: bcryptjs password hashing with 10 salt rounds
-2. `generateSecureToken`: Cryptographically secure random hex token generation
-3. `hashToken`: Deterministic SHA-256 token hashing for safe database storage
-4. `signSessionToken / verifySessionToken`: JWT session token creation and safe payload verification
+## Session Lifecycle & Security
+- Passwords are hashed with `bcryptjs` using a salted 10-round configuration.
+- Session tokens are signed with JWT and stored as SHA-256 hashes in the `sessions` table.
+- Verification and reset flows use secure random token generation and hashed token lookups.
+- Requests can be protected by `authenticateRequest(...)`, which verifies bearer tokens and enforces live, non-revoked, non-expired session state.
+- Sliding-window in-memory rate limiting is enforced for signup and login endpoints.
 
-## Dependencies Added
-- `bcryptjs`: ^3.0.2 (pure JS password hashing)
-- `jsonwebtoken`: ^9.0.2 (session token signing and verification)
+## Audit Events Tracked
+- `USER_SIGNUP`
+- `USER_LOGIN`
+- `USER_LOGIN_FAILED`
+- `USER_LOGOUT`
+- `EMAIL_VERIFIED`
 
 ## Verification
-- Shared contracts and backend TypeScript compile with zero errors (`tsc --noEmit`).
-- All 16 backend test suites pass with 100% success rate.
+- Backend typecheck passes with the project TypeScript configuration.
+- Backend test suite passes after adding the Step 2 auth coverage.

@@ -7,11 +7,16 @@ import { globalThalamus } from './thalamus/index.js';
 import { globalCouncil } from './council/index.js';
 import { globalBrainLoader } from './brain/index.js';
 import { evaluateAstProgram, validateBoundedAstProgram } from './ast/index.js';
-import { getPgPool, checkPostgresHealth } from './persistence/postgres/index.js';
+import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './persistence/postgres/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
+import { AuthService } from './auth/service.js';
+import { authenticateRequest, RateLimiter } from './auth/middleware.js';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
+const postgresBundle = createPostgresPersistence(getPgPool());
+const authService = new AuthService(postgresBundle, getPgPool());
+const authRateLimiter = new RateLimiter(15 * 60 * 1000, 10);
 let drainTimer: NodeJS.Timeout | null = null;
 let astStats = {
   validationsCount: 0,
@@ -134,6 +139,22 @@ process.on('SIGTERM', shutdownServer);
 process.on('SIGINT', shutdownServer);
 
 export const server = http.createServer(async (req, res) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  };
+
+  Object.entries(corsHeaders).forEach(([key, value]) => {
+    res.setHeader(key, value);
+  });
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   const url = req.url || '/';
   const method = req.method || 'GET';
   const requestPath = normalizeRequestPath(url);
@@ -528,6 +549,133 @@ export const server = http.createServer(async (req, res) => {
         success: false,
         error: error instanceof Error ? error.message : 'Internal inspection error',
       });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/signup' && method === 'POST') {
+    const rateKey = `signup:${req.socket.remoteAddress || 'unknown'}`;
+    const rateLimit = authRateLimiter.check(rateKey);
+    if (!rateLimit.allowed) {
+      sendJsonResponse(res, 429, {
+        success: false,
+        error: 'Too many signup attempts. Please try again later.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.email !== 'string' || typeof body.password !== 'string' || typeof body.fullName !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'email, password, and fullName are required' });
+        return;
+      }
+
+      const result = await authService.signup({
+        email: body.email,
+        password: body.password,
+        fullName: body.fullName,
+        ipAddress: typeof body.ipAddress === 'string' ? body.ipAddress : undefined,
+        userAgent: typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] as string | undefined,
+      });
+
+      sendJsonResponse(res, 201, { success: true, ...result });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to create account';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/login' && method === 'POST') {
+    const rateKey = `login:${req.socket.remoteAddress || 'unknown'}`;
+    const rateLimit = authRateLimiter.check(rateKey);
+    if (!rateLimit.allowed) {
+      sendJsonResponse(res, 429, {
+        success: false,
+        error: 'Too many login attempts. Please try again later.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.email !== 'string' || typeof body.password !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'email and password are required' });
+        return;
+      }
+
+      const result = await authService.login({
+        email: body.email,
+        password: body.password,
+        ipAddress: typeof body.ipAddress === 'string' ? body.ipAddress : undefined,
+        userAgent: typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] as string | undefined,
+      });
+
+      sendJsonResponse(res, 200, { success: true, ...result });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Login failed';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/logout' && method === 'POST') {
+    const authenticated = await authenticateRequest(req, res, postgresBundle);
+    if (!authenticated || !req.session) {
+      return;
+    }
+
+    try {
+      await authService.logout(req.session.id, req.session.userId, req.headers['x-forwarded-for'] as string | undefined, req.headers['user-agent'] as string | undefined);
+      sendJsonResponse(res, 200, { success: true, message: 'Logged out successfully' });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Logout failed';
+      sendJsonResponse(res, 500, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/verify-email' && method === 'POST') {
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.token !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'Verification token is required' });
+        return;
+      }
+
+      const result = await authService.verifyEmail(body.token);
+      sendJsonResponse(res, 200, result);
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to verify email';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/me' && method === 'GET') {
+    const authenticated = await authenticateRequest(req, res, postgresBundle);
+    if (!authenticated || !req.user) {
+      return;
+    }
+
+    try {
+      const result = await authService.getMe(req.user.sub);
+      sendJsonResponse(res, 200, { success: true, ...result });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load current user';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
       return;
     }
   }

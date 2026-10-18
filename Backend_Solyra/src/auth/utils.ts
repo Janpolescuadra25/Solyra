@@ -25,6 +25,12 @@ export function signSessionToken(
   secret: string,
   expiresIn: string | number = '1h'
 ): string {
+  const hasExplicitExpiry = Object.prototype.hasOwnProperty.call(payload, 'exp');
+
+  if (hasExplicitExpiry) {
+    return jwt.sign(payload, secret);
+  }
+
   return jwt.sign(payload, secret, { expiresIn: expiresIn as jwt.SignOptions['expiresIn'] });
 }
 

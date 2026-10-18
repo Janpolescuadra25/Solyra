@@ -1,20 +1,24 @@
 import {
   CouncilMemberRole,
-  CouncilTaskStatus,
-  CouncilTaskLedgerEntry,
-  BrainPackageManifest,
-  BoundedAstProgram,
   SystemPriority,
   ArousalLevel,
   AccountState,
-  AuditEvent,
   AuditEventType,
-  AuthToken,
-  AuthTokenType,
-  EmailOutboxEntry,
   EmailOutboxStatus,
-  AuthSession
-} from './index';
+  AuthTokenType,
+} from './index.js';
+import type {
+  CouncilTaskStatus,
+  CouncilTaskLedgerEntry,
+} from './council.js';
+import type { BrainPackageManifest } from './package.js';
+import type { BoundedAstProgram } from './ast.js';
+import type {
+  AuditEvent,
+  AuthSession,
+  AuthToken,
+  EmailOutboxEntry,
+} from './index.js';
 
 // 1. Verify Council contracts
 const sampleRole: CouncilMemberRole = CouncilMemberRole.YOSHI;

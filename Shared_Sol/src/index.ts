@@ -1,5 +1,4 @@
 export * from './ast.js';
-export * from './contracts.verify.js';
 
 /**
  * Solyra Core Types & System Contracts
