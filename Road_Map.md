@@ -2,7 +2,7 @@
 
 ## Active Phase
 ### Full-Stack Application Layer: Authentication, Workspaces & Owner Control Center
-- [ ] **Step 1: Foundation, Shared Contracts & Schema Hardening** — Extend `@solyra/shared` contracts with account states, session lifecycle, onboarding progress, and audit event types. Extend PostgreSQL schema with `sessions`, `email_outbox`, `audit_events`, and `tokens` tables. Add password hashing (`argon2` or `bcrypt`) and JWT/session utilities to `@solyra/backend`.
+- [x] **Step 1: Foundation, Shared Contracts & Schema Hardening** — Extend `@solyra/shared` contracts with account states, session lifecycle, onboarding progress, and audit event types. Extend PostgreSQL schema with `sessions`, `email_outbox`, `audit_events`, and `tokens` tables. Add password hashing (`argon2` or `bcrypt`) and JWT/session utilities to `@solyra/backend`. (completed in commit 1270b849c1c97512ac76706b08cb452351e3de5c)
 - [ ] **Step 2: Core Authentication & Session Backend** — Implement signup, email verification outbox generation, login/logout, revocable sessions, authentication middleware, and negative test matrices in `@solyra/backend`.
 - [ ] **Step 3: Account Security, Recovery & Onboarding Backend** — Implement forgot/reset password token flows, rate limiting, owner MFA/recovery hooks, and resumable onboarding state machine APIs.
 - [ ] **Step 4: Frontend Application Foundation & Routing** — Set up React Router, TailwindCSS, auth context/guards, and API client in `@solyra/frontend`.
