@@ -1,26 +1,25 @@
 import axios from 'axios';
 
-export const apiClient = axios.create({
-  baseURL: '',
+export const client = axios.create({
+  baseURL: '/',
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-apiClient.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem('solyra_auth_token');
+client.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem('token');
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-apiClient.interceptors.response.use(
+client.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      sessionStorage.removeItem('solyra_auth_token');
-      sessionStorage.removeItem('solyra_user');
+      sessionStorage.removeItem('token');
       if (window.location.pathname !== '/login' && window.location.pathname !== '/') {
         window.location.href = '/login';
       }
