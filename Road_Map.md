@@ -2,7 +2,6 @@
 
 ## Active Phase
 ### Full-Stack Application Layer: Authentication, Workspaces & Owner Control Center
-- [ ] **Step 5: User Authentication & Resumable Onboarding UI** — Build responsive login, signup, verification, reset password, and onboarding screens connected to backend APIs.
 - [ ] **Step 6: Regular-User Conversational Workspace** — Build collapsible sidebar, chat sessions, message rendering, turn lifecycle management, retry logic, and personal settings.
 - [ ] **Step 7: Master Owner Administration Control Center** — Build multi-panel owner dashboard for brain monitoring, package management, user directory, session revocation, audit logs, and system controls.
 - [ ] **Step 8: End-to-End Integration & Security Acceptance Matrix** — Execute comprehensive full-stack verification covering auth flows, session revocation, regular-user chat lifecycle, and owner administration controls per Solyra plan requirements.
@@ -34,5 +33,6 @@
 - [x] **Step 2: Core Authentication & Session Backend** — Implemented signup, email verification outbox, login/logout, revocable sessions, authentication middleware, 5 security hardening controls (SafeUserDto sanitization, fail-closed JWT, atomic verification transactions, inactive account block, RateLimiter stale key cleanup), and 23 passing tests in `@solyra/backend`. (completed in commit `1c0855081cd2029ab3ca2d156a2e0f0fae6af066`)
 - [x] **Step 3: Account Security, Recovery & Onboarding Backend** — Implemented forgot/reset password token flows, account lockouts, rate limiting extensions, onboarding status tracking in `users`, and audit logging in `@solyra/backend`. (completed in commit 746c803b4285b0d4d1c7b106e0ab86084d0ca7ff)
 - [x] **Step 4: Frontend Application Foundation & Routing** — Implemented React Router v6, TailwindCSS v3, 3-tier auth context, route guards, unified Axios API client, and reverse proxy configuration in `@solyra/frontend` (completed in commit `1d5151bd6caa752cbbb43ee45e55994a893aa4a4`).
+- [x] **Step 5: User Authentication & Resumable Onboarding UI** — Implemented responsive login, signup, email verification, password reset, 3-tier auth context with profile hydration, top-header shell layout, and resumable 3-step onboarding wizard in `@solyra/frontend` (completed in commit `3a730c04a1ca5309372d6558429766c580b32156`).
 
 
