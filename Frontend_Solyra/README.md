@@ -1,26 +1,15 @@
-﻿# Frontend_Solyra (@solyra/frontend)
+# Frontend Solyra (Web Application)
 
-## ✅ STATUS: DONE (Step 4: Frontend Application Foundation & Routing)
+Client application for the Solyra Autonomous Enterprise System.
 
-This frontend foundation establishes the React Router v6 shell, TailwindCSS v3 styling layer, 3-tier session model, and unified Axios client required by the Solyra guest-first user experience.
+## Architecture
+- **Framework:** React 18, Vite, TypeScript
+- **Styling:** TailwindCSS
+- **Routing:** React Router v6 with Auth Guards and Tier-based Navigation (Guest, Member, Owner)
+- **Layout:** Header-based navigation shell with dynamic tier badge and user profile display
+- **API Client:** Axios with bearer token injection and 401 interceptors
+- **Authentication:** Integrated `/auth/*` endpoints with interactive forms, client-side validation, error handling, and resumable onboarding wizard.
 
-### Architecture
-- React 19 + TypeScript + Vite app shell
-- TailwindCSS v3 with PostCSS and Autoprefixer
-- Route hierarchy for public, member, and owner/admin flows
-- Auth context with `guest`, `member`, and `owner` tiers
-- Session tokens stored in `sessionStorage` for safer browser session isolation
-- Axios API client with Authorization header injection and automatic 401 cleanup
-
-### Route Hierarchy
-- Public / Guest: `/`, `/login`, `/signup`, `/forgot-password`, `/reset-password`
-- Protected Member: `/dashboard`, `/settings`, `/onboarding`
-- Protected Owner/Admin: `/owner`
-
-### Security Model
-- Tokens are kept in `sessionStorage` and cleared on sign out or 401 responses.
-- Protected routes are enforced through `AuthGuard` and `OwnerGuard` wrappers.
-- Guest-first landing flows remain available without forced registration.
-
-### Step 5 Connection Point
-Step 5 UI work will hook actual authentication and chat actions into this foundation by connecting the verified `/auth/*` endpoints and conversation workspace components to the existing router and session state.
+## Status
+- **Step 4: Frontend Application Foundation & Routing:** DONE (Commit `1d5151bd6caa752cbbb43ee45e55994a893aa4a4`)
+- **Step 5: User Authentication & Resumable Onboarding UI:** DONE

@@ -1,58 +1,118 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import type { User } from '@solyra/shared';
+import { client } from '../api/client';
 
-export type AuthTier = 'guest' | 'member' | 'owner';
-
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
-  token: string | null;
-  tier: AuthTier;
+  tier: 'guest' | 'member' | 'owner';
   isAuthenticated: boolean;
-  isGuest: boolean;
-  login: (token: string, user: User) => void;
-  logout: () => void;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  signup: (fullName: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
   setGuestMode: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(() => sessionStorage.getItem('solyra_auth_token'));
-  const [user, setUser] = useState<User | null>(() => {
-    const stored = sessionStorage.getItem('solyra_user');
-    return stored ? (JSON.parse(stored) as User) : null;
-  });
+  const [user, setUser] = useState<User | null>(null);
+  const [isGuest, setIsGuest] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const tier: AuthTier = !user || user.isGuest ? 'guest' : user.role === 'admin' ? 'owner' : 'member';
-
-  const login = (newToken: string, newUser: User) => {
-    sessionStorage.setItem('solyra_auth_token', newToken);
-    sessionStorage.setItem('solyra_user', JSON.stringify(newUser));
-    setToken(newToken);
-    setUser(newUser);
+  const refreshUser = async () => {
+    const token = sessionStorage.getItem('token');
+    if (!token) {
+      setUser(null);
+      return;
+    }
+    try {
+      const response = await client.get('/auth/me');
+      if (response.data && response.data.user) {
+        setUser(response.data.user);
+        setIsGuest(false);
+      }
+    } catch (error) {
+      console.error('Failed to refresh user profile:', error);
+      sessionStorage.removeItem('token');
+      setUser(null);
+      setIsGuest(false);
+    }
   };
 
-  const logout = () => {
-    sessionStorage.removeItem('solyra_auth_token');
-    sessionStorage.removeItem('solyra_user');
-    setToken(null);
-    setUser(null);
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = sessionStorage.getItem('token');
+      if (token) {
+        await refreshUser();
+      }
+      setIsLoading(false);
+    };
+    initAuth();
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const response = await client.post('/auth/login', { email, password });
+      const { user: authedUser, token } = response.data;
+      if (token) {
+        sessionStorage.setItem('token', token);
+      }
+      setUser(authedUser);
+      setIsGuest(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const signup = async (fullName: string, email: string, password: string) => {
+    setIsLoading(true);
+    try {
+      const response = await client.post('/auth/signup', { fullName, email, password });
+      const { user: newUser, token } = response.data;
+      if (token) {
+        sessionStorage.setItem('token', token);
+      }
+      setUser(newUser);
+      setIsGuest(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await client.post('/auth/logout');
+    } catch {
+      // Ignore network errors on logout
+    } finally {
+      sessionStorage.removeItem('token');
+      setUser(null);
+      setIsGuest(false);
+    }
   };
 
   const setGuestMode = () => {
-    logout();
+    sessionStorage.removeItem('token');
+    setUser(null);
+    setIsGuest(true);
   };
+
+  const tier: 'guest' | 'member' | 'owner' = user ? (user.role === 'owner' || user.role === 'admin' ? 'owner' : 'member') : isGuest ? 'guest' : 'guest';
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        token,
         tier,
-        isAuthenticated: !!token && !!user && !user.isGuest,
-        isGuest: tier === 'guest',
+        isAuthenticated: !!user,
+        isLoading,
         login,
+        signup,
         logout,
+        refreshUser,
         setGuestMode,
       }}
     >
