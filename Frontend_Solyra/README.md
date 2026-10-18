@@ -13,8 +13,8 @@ This frontend pass delivers the guest-first auth flow and persistent onboarding 
 - Axios client with Bearer token injection and automatic 401 cleanup
 
 ### Route Hierarchy
-- Public / Guest: `/`, `/chat`, `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-email`
-- Protected Member: `/app`, `/dashboard`, `/profile`, `/settings`, `/onboarding`
+- Public / Guest: `/`, `/login`, `/signup`, `/forgot-password`, `/reset-password`, `/verify-email`
+- Protected Member: `/chat`, `/app`, `/dashboard`, `/profile`, `/settings`, `/onboarding`
 - Protected Owner/Admin: `/admin` and legacy `/owner` redirect
 
 ### Auth & Onboarding Experience
@@ -26,4 +26,11 @@ This frontend pass delivers the guest-first auth flow and persistent onboarding 
 ### Security Model
 - Tokens are kept in `sessionStorage` and removed on sign-out or 401 responses.
 - The app never forces a user into a member-only flow without explicit session authentication.
-- Guest-first landing and chat access remain available before the user signs in.
+- Guest-first landing remains available before sign-in, while the chat workspace is protected behind `AuthGuard` and workspace-scoped backend ownership checks.
+
+### Conversational Workspace (`/chat`)
+- Multi-session conversation management with creation, listing, switching, and deletion of conversation threads.
+- Authenticated workspace isolation: each request is verified against the active session workspace and the current user ownership state.
+- Message turn lifecycle: user turn, assistant acknowledgment, optimistic UI updates, and loading/error handling for message delivery.
+- Model selection controls enable switching between `solyra-default`, `solyra-reasoning`, and `solyra-fast` within the active chat session.
+- Backend endpoints include `GET /api/chat/conversations`, `POST /api/chat/conversations`, `GET /api/chat/conversations/:id/messages`, `POST /api/chat/conversations/:id/messages`, and `DELETE /api/chat/conversations/:id`.

@@ -1,4 +1,5 @@
 import * as http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { log } from './logger.js';
 import { globalBus } from './neurobus/index.js';
 import { globalBrainstem } from './brainstem/index.js';
@@ -20,6 +21,7 @@ const authRateLimiter = new RateLimiter(15 * 60 * 1000, 10);
 const loginRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
 const forgotPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 3);
 const resetPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
+const chatRateLimiter = new RateLimiter(60 * 1000, 120);
 let drainTimer: NodeJS.Timeout | null = null;
 let astStats = {
   validationsCount: 0,
@@ -161,6 +163,224 @@ export const server = http.createServer(async (req, res) => {
   const url = req.url || '/';
   const method = req.method || 'GET';
   const requestPath = normalizeRequestPath(url);
+
+  if (requestPath.startsWith('/api/chat')) {
+    const pathParts = requestPath.split('/').filter(Boolean);
+    const chatRateKey = req.socket.remoteAddress || 'unknown';
+    const chatLimit = chatRateLimiter.check(chatRateKey);
+    if (!chatLimit.allowed) {
+      sendJsonResponse(res, 429, {
+        success: false,
+        error: 'Too many chat requests. Please slow down and try again shortly.',
+        retryAfterSeconds: chatLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    if (req.method === 'GET' && pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations') {
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const conversations = await postgresBundle.chat.listConversations(req.session.workspaceId, req.session.userId);
+        sendJsonResponse(res, 200, { success: true, conversations });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to list conversations';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return;
+      }
+    }
+
+    if (req.method === 'POST' && pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations') {
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const body = await readJsonRequest(req, 1024 * 1024);
+        const title = isRecord(body) && typeof body.title === 'string' && body.title.trim() ? body.title.trim() : 'New Conversation';
+        const modelIdentifier = isRecord(body) && typeof body.modelIdentifier === 'string' && body.modelIdentifier.trim() ? body.modelIdentifier.trim() : 'solyra-default';
+        const systemPromptOverride = isRecord(body) && typeof body.systemPromptOverride === 'string' ? body.systemPromptOverride : undefined;
+
+        const conversation = await postgresBundle.chat.createConversation({
+          id: randomUUID(),
+          workspaceId: req.session.workspaceId,
+          userId: req.session.userId,
+          title,
+          modelIdentifier,
+          systemPromptOverride,
+          messageCount: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        });
+
+        sendJsonResponse(res, 201, { success: true, conversation });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to create conversation';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return;
+      }
+    }
+
+    if (req.method === 'GET' && pathParts.length === 5 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations' && pathParts[4] === 'messages') {
+      const conversationId = pathParts[3];
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const conversation = await postgresBundle.chat.getConversation(conversationId);
+        if (!conversation) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.workspaceId !== req.session.workspaceId) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.userId !== req.session.userId) {
+          sendJsonResponse(res, 403, { success: false, error: 'Forbidden: you do not own this conversation' });
+          return;
+        }
+
+        const messages = await postgresBundle.chat.getMessages(conversationId);
+        sendJsonResponse(res, 200, { success: true, messages });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to retrieve messages';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return;
+      }
+    }
+
+    if (req.method === 'POST' && pathParts.length === 5 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations' && pathParts[4] === 'messages') {
+      const conversationId = pathParts[3];
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const conversation = await postgresBundle.chat.getConversation(conversationId);
+        if (!conversation) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.workspaceId !== req.session.workspaceId) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.userId !== req.session.userId) {
+          sendJsonResponse(res, 403, { success: false, error: 'Forbidden: you do not own this conversation' });
+          return;
+        }
+
+        const body = await readJsonRequest(req, 1024 * 1024);
+        if (!isRecord(body) || typeof body.content !== 'string' || body.content.trim() === '') {
+          sendJsonResponse(res, 400, { success: false, error: 'Message content is required' });
+          return;
+        }
+
+        const trimmedContent = body.content.trim();
+        const userMessage = await postgresBundle.chat.appendMessage({
+          id: randomUUID(),
+          conversationId,
+          senderId: req.session.userId,
+          role: 'user',
+          content: trimmedContent,
+          createdAt: new Date(),
+        });
+
+        const assistantReplyText = `Solyra Assistant: I received your request: "${trimmedContent}". Conversational engine is active and ready for collaborative tasks.`;
+        const assistantMessage = await postgresBundle.chat.appendMessage({
+          id: randomUUID(),
+          conversationId,
+          senderId: 'solyra-assistant',
+          role: 'assistant',
+          content: assistantReplyText,
+          createdAt: new Date(),
+        });
+
+        sendJsonResponse(res, 201, {
+          success: true,
+          userMessage,
+          assistantMessage,
+          messages: [userMessage, assistantMessage],
+        });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to append message';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return;
+      }
+    }
+
+    if (req.method === 'DELETE' && pathParts.length === 4 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations') {
+      const conversationId = pathParts[3];
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const conversation = await postgresBundle.chat.getConversation(conversationId);
+        if (!conversation) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.workspaceId !== req.session.workspaceId) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.userId !== req.session.userId) {
+          sendJsonResponse(res, 403, { success: false, error: 'Forbidden: you do not own this conversation' });
+          return;
+        }
+
+        const deleted = await postgresBundle.chat.deleteConversation(conversationId, req.session.workspaceId);
+        sendJsonResponse(res, 200, { success: true, deleted });
+        return;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to delete conversation';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return;
+      }
+    }
+
+    sendJsonResponse(res, 404, { success: false, error: 'Chat route not found' });
+    return;
+  }
 
   if (req.method === 'GET' && requestPath === '/thalamus/stats') {
     res.writeHead(200, { 'Content-Type': 'application/json' });

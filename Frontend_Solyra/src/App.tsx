@@ -16,6 +16,7 @@ import {
   OnboardingPage,
   ProfilePage,
   SettingsPage,
+  ChatWorkspacePage,
 } from './routes/MemberRoutes';
 import { OwnerDashboardPage } from './routes/OwnerRoutes';
 
@@ -25,7 +26,7 @@ export const App: React.FC = () => {
       <Routes>
         <Route element={<ShellLayout />}>
           <Route path="/" element={<LandingPage />} />
-          <Route path="/chat" element={<LandingPage />} />
+          <Route path="/chat" element={<AuthGuard><ChatWorkspacePage /></AuthGuard>} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />

@@ -59,4 +59,15 @@ export class InMemoryChatRepository {
     const list = this.messages.get(conversationId) ?? [];
     return { success: true, data: structuredClone(list) };
   }
+
+  async deleteConversation(tenantId: string, id: string, workspaceId: string): Promise<boolean> {
+    const conversation = this.conversations.get(id);
+    if (!conversation || conversation.tenantId !== tenantId || conversation.workspaceId !== workspaceId) {
+      return false;
+    }
+
+    this.conversations.delete(id);
+    this.messages.delete(id);
+    return true;
+  }
 }
