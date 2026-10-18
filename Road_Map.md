@@ -1,4 +1,4 @@
-﻿# Solyra Roadmap
+# Solyra Roadmap
 
 ## Active Phase
 ### Full-Stack Application Layer: Authentication, Workspaces & Owner Control Center
@@ -34,3 +34,5 @@
 - [x] **Milestone B Step 4: Package Lifecycle & Distribution** — Bounded package history, rollback safety, version activation/deactivation, export packaging, 7 authenticated lifecycle API endpoints, and full test coverage (completed in commit 0bd054f86269c551918f45afac2328d3b203e4da)
 - [x] **Step 1: Foundation, Shared Contracts & Schema Hardening** — Extend `@solyra/shared` contracts with account states, session lifecycle, onboarding progress, and audit event types. Extend PostgreSQL schema with `sessions`, `email_outbox`, `audit_events`, and `tokens` tables. Add password hashing (`argon2` or `bcrypt`) and JWT/session utilities to `@solyra/backend`. (completed in commit 1270b849c1c97512ac76706b08cb452351e3de5c)
 - [x] **Step 2: Core Authentication & Session Backend** — Implemented signup, email verification outbox, login/logout, revocable sessions, authentication middleware, 5 security hardening controls (SafeUserDto sanitization, fail-closed JWT, atomic verification transactions, inactive account block, RateLimiter stale key cleanup), and 23 passing tests in `@solyra/backend`. (completed in commit `1c0855081cd2029ab3ca2d156a2e0f0fae6af066`)
+
+
