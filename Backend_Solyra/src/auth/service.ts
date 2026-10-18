@@ -11,9 +11,18 @@ import {
   signSessionToken,
 } from './utils.js';
 
-const DEFAULT_JWT_SECRET = 'solyra-dev-jwt-secret-do-not-use-in-production-change-me';
 const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
+export interface SafeUserDto {
+  id: string;
+  email: string;
+  fullName: string;
+  isActive: boolean;
+  avatarUrl?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 type AuthSessionSummary = {
   id: string;
@@ -24,6 +33,17 @@ type AuthSessionSummary = {
 
 type SessionTokenWithSessionId = SessionTokenPayload & { sessionId?: string };
 
+export function getResolvedJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('FATAL: JWT_SECRET environment variable must be configured in production.');
+    }
+    return 'solyra-dev-jwt-secret-do-not-use-in-production-change-me';
+  }
+  return secret;
+}
+
 export class AuthService {
   constructor(
     private readonly bundle: PostgresPersistenceBundle,
@@ -31,7 +51,27 @@ export class AuthService {
   ) {}
 
   private getJwtSecret(): string {
-    return process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
+    return getResolvedJwtSecret();
+  }
+
+  private mapUserToSafeDto(user: {
+    id: string;
+    email: string;
+    fullName: string;
+    isActive: boolean;
+    avatarUrl?: string | null;
+    createdAt?: Date | string | null;
+    updatedAt?: Date | string | null;
+  }): SafeUserDto {
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      isActive: user.isActive,
+      avatarUrl: user.avatarUrl ?? null,
+      createdAt: user.createdAt ? new Date(user.createdAt) : undefined,
+      updatedAt: user.updatedAt ? new Date(user.updatedAt) : undefined,
+    };
   }
 
   private buildAuthError(message: string, statusCode = 401): Error & { statusCode: number } {
@@ -251,38 +291,59 @@ export class AuthService {
   }
 
   async verifyEmail(token: string): Promise<{ success: true; userId: string }> {
-    const tokenHash = hashToken(token);
-    const result = await this.pool.query(
-      `
-        SELECT * FROM tokens
-        WHERE token_hash = $1
-          AND token_type = 'EMAIL_VERIFICATION'
-          AND consumed_at IS NULL
-          AND expires_at > NOW()
-      `,
-      [tokenHash]
-    );
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const tokenHash = hashToken(token);
+      const result = await client.query(
+        `
+          SELECT id, user_id, expires_at, consumed_at, token_type
+          FROM tokens
+          WHERE token_hash = $1
+            AND token_type = 'EMAIL_VERIFICATION'
+          FOR UPDATE
+        `,
+        [tokenHash]
+      );
 
-    if ((result.rowCount ?? 0) === 0) {
-      throw this.buildAuthError('Verification token is invalid or expired.', 401);
+      const tokenRecord = result.rows[0];
+      if (!tokenRecord || tokenRecord.consumed_at != null || new Date(tokenRecord.expires_at).getTime() < Date.now()) {
+        await client.query('ROLLBACK');
+        throw this.buildAuthError('Invalid or expired verification token.', 400);
+      }
+
+      await client.query('UPDATE tokens SET consumed_at = NOW() WHERE id = $1', [tokenRecord.id]);
+      await client.query('UPDATE users SET is_active = TRUE, updated_at = NOW() WHERE id = $1', [tokenRecord.user_id]);
+      await client.query(
+        `
+          INSERT INTO audit_events (id, user_id, workspace_id, event_type, details, ip_address, user_agent, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+        `,
+        [
+          randomUUID(),
+          tokenRecord.user_id,
+          null,
+          'EMAIL_VERIFIED',
+          JSON.stringify({ tokenType: 'EMAIL_VERIFICATION' }),
+          null,
+          null,
+        ]
+      );
+
+      await client.query('COMMIT');
+      return { success: true, userId: tokenRecord.user_id };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
     }
-
-    const tokenRecord = result.rows[0];
-    await this.pool.query('UPDATE tokens SET consumed_at = NOW() WHERE id = $1', [tokenRecord.id]);
-    await this.pool.query('UPDATE users SET is_active = TRUE, updated_at = NOW() WHERE id = $1', [tokenRecord.user_id]);
-    await this.bundle.audit.recordEvent({
-      eventType: 'EMAIL_VERIFIED',
-      userId: tokenRecord.user_id,
-      details: { tokenType: 'EMAIL_VERIFICATION' },
-    });
-
-    return { success: true, userId: tokenRecord.user_id };
   }
 
   async getMe(
     userId: string
   ): Promise<{
-    user: Awaited<ReturnType<PostgresPersistenceBundle['users']['findById']>>;
+    user: SafeUserDto;
     workspaces: Awaited<ReturnType<PostgresPersistenceBundle['workspaces']['listByOwner']>>;
   }> {
     const user = await this.bundle.users.findById(userId);
@@ -291,6 +352,6 @@ export class AuthService {
     }
 
     const workspaces = await this.bundle.workspaces.listByOwner(userId);
-    return { user, workspaces };
+    return { user: this.mapUserToSafeDto(user), workspaces };
   }
 }

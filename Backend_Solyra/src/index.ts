@@ -670,7 +670,7 @@ export const server = http.createServer(async (req, res) => {
 
     try {
       const result = await authService.getMe(req.user.sub);
-      sendJsonResponse(res, 200, { success: true, ...result });
+      sendJsonResponse(res, 200, { success: true, user: result.user, workspaces: result.workspaces });
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load current user';

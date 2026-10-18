@@ -16,6 +16,17 @@ declare module 'node:http' {
   }
 }
 
+export function getResolvedJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('FATAL: JWT_SECRET environment variable must be configured in production.');
+    }
+    return 'solyra-dev-jwt-secret-do-not-use-in-production-change-me';
+  }
+  return secret;
+}
+
 export class RateLimiter {
   private readonly buckets = new Map<string, number[]>();
 
@@ -26,9 +37,18 @@ export class RateLimiter {
 
   check(key: string): { allowed: boolean; remaining: number; retryAfterSeconds?: number } {
     const now = Date.now();
-    const entries = this.buckets.get(key) ?? [];
-    const recent = entries.filter((ts) => now - ts < this.windowMs);
 
+    for (const [bucketKey, bucket] of this.buckets.entries()) {
+      const active = bucket.filter((timestamp) => now - timestamp < this.windowMs);
+      if (active.length === 0) {
+        this.buckets.delete(bucketKey);
+      } else {
+        this.buckets.set(bucketKey, active);
+      }
+    }
+
+    const entries = this.buckets.get(key) ?? [];
+    const recent = entries.filter((timestamp) => now - timestamp < this.windowMs);
     if (recent.length >= this.maxRequests) {
       const oldest = recent[0];
       const retryAfterSeconds = Math.max(1, Math.ceil((oldest + this.windowMs - now) / 1000));
@@ -39,12 +59,13 @@ export class RateLimiter {
       };
     }
 
-    recent.push(now);
-    this.buckets.set(key, recent);
+    const nextEntries = recent.length === 0 ? [] : recent;
+    nextEntries.push(now);
+    this.buckets.set(key, nextEntries);
 
     return {
       allowed: true,
-      remaining: Math.max(0, this.maxRequests - recent.length),
+      remaining: Math.max(0, this.maxRequests - nextEntries.length),
     };
   }
 }
@@ -77,7 +98,7 @@ export async function authenticateRequest(
     return false;
   }
 
-  const jwtSecret = process.env.JWT_SECRET || 'solyra-dev-jwt-secret-do-not-use-in-production-change-me';
+  const jwtSecret = getResolvedJwtSecret();
   const payload = verifySessionToken<SessionTokenPayload & { sessionId?: string }>(token, jwtSecret);
   if (!payload) {
     sendJsonError(res, 401, 'Invalid or expired session token');
@@ -98,6 +119,12 @@ export async function authenticateRequest(
 
   if (new Date(session.expiresAt).getTime() <= Date.now()) {
     sendJsonError(res, 401, 'Session has expired');
+    return false;
+  }
+
+  const user = await bundle.users.findById(session.userId);
+  if (!user || !user.isActive) {
+    sendJsonError(res, 403, 'Account is suspended or deactivated');
     return false;
   }
 
