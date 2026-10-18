@@ -1,5 +1,15 @@
-﻿# Auth Core Layer (Hardened Step 2)
-✅ **STATUS: HARDENED & PASSING** — Step 2 authentication has been strengthened against the confirmed security vulnerabilities and regression-covered.
+﻿# Auth Core Layer
+✅ **STATUS: DONE** (completed in commit `1c0855081cd2029ab3ca2d156a2e0f0fae6af066`)
+
+## COMPLETED MILESTONES
+- [x] **Step 1: Foundation, Shared Contracts & Schema Hardening** (commit `1270b849c1c97512ac76706b08cb452351e3de5c`)
+  - Password hashing utilities (`bcryptjs`), secure token generation, and token hashing.
+  - PostgreSQL schema for `sessions`, `tokens`, `email_outbox`, and `audit_events`.
+- [x] **Step 2: Core Authentication & Session Backend** (commit `1c0855081cd2029ab3ca2d156a2e0f0fae6af066`)
+  - Repositories: `SessionRepository`, `EmailOutboxRepository`, `AuditEventRepository`.
+  - Services & Middleware: `AuthService` (transactional signup/login/logout/verification), `authenticateRequest` middleware, in-memory sliding-window `RateLimiter`.
+  - Security Hardening: `SafeUserDto` sanitization (stripping `passwordHash` on `/auth/me`), fail-closed JWT secret in production, atomic verification transactions with row locking, inactive user blocking (HTTP 403), and stale rate-limit bucket pruning.
+  - Test Suite: All 23 backend tests passing cleanly.
 
 ## Architecture Overview
 This module contains the backend authentication stack for Solyra, covering persistence repositories, atomic signup transactions, JWT session validation, and protected request handling.

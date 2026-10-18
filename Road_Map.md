@@ -2,8 +2,7 @@
 
 ## Active Phase
 ### Full-Stack Application Layer: Authentication, Workspaces & Owner Control Center
-- [ ] **Step 2: Core Authentication & Session Backend** — Implement signup, email verification outbox generation, login/logout, revocable sessions, authentication middleware, and negative test matrices in `@solyra/backend`.
-- [ ] **Step 3: Account Security, Recovery & Onboarding Backend** — Implement forgot/reset password token flows, rate limiting, owner MFA/recovery hooks, and resumable onboarding state machine APIs.
+- [ ] **Step 3: Account Security, Recovery & Onboarding Backend** — Implement forgot/reset password token flows, account lockouts, rate limiting extensions, onboarding status tracking in `users`, and audit logging in `@solyra/backend`.
 - [ ] **Step 4: Frontend Application Foundation & Routing** — Set up React Router, TailwindCSS, auth context/guards, and API client in `@solyra/frontend`.
 - [ ] **Step 5: User Authentication & Resumable Onboarding UI** — Build responsive login, signup, verification, reset password, and onboarding screens connected to backend APIs.
 - [ ] **Step 6: Regular-User Conversational Workspace** — Build collapsible sidebar, chat sessions, message rendering, turn lifecycle management, retry logic, and personal settings.
@@ -34,3 +33,4 @@
 - [x] **Milestone B Step 3: Sandbox Isolation & Execution** (completed in commit 02fb0db168c9cea5437ea0e65e4c66595312f955)
 - [x] **Milestone B Step 4: Package Lifecycle & Distribution** — Bounded package history, rollback safety, version activation/deactivation, export packaging, 7 authenticated lifecycle API endpoints, and full test coverage (completed in commit 0bd054f86269c551918f45afac2328d3b203e4da)
 - [x] **Step 1: Foundation, Shared Contracts & Schema Hardening** — Extend `@solyra/shared` contracts with account states, session lifecycle, onboarding progress, and audit event types. Extend PostgreSQL schema with `sessions`, `email_outbox`, `audit_events`, and `tokens` tables. Add password hashing (`argon2` or `bcrypt`) and JWT/session utilities to `@solyra/backend`. (completed in commit 1270b849c1c97512ac76706b08cb452351e3de5c)
+- [x] **Step 2: Core Authentication & Session Backend** — Implemented signup, email verification outbox, login/logout, revocable sessions, authentication middleware, 5 security hardening controls (SafeUserDto sanitization, fail-closed JWT, atomic verification transactions, inactive account block, RateLimiter stale key cleanup), and 23 passing tests in `@solyra/backend`. (completed in commit `1c0855081cd2029ab3ca2d156a2e0f0fae6af066`)
