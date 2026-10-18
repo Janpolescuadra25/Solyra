@@ -137,3 +137,62 @@ CREATE TABLE IF NOT EXISTS memory_records (
 
 CREATE INDEX IF NOT EXISTS idx_memory_records_tenant_tier ON memory_records(tenant_id, tier);
 CREATE INDEX IF NOT EXISTS idx_memory_records_salience ON memory_records(tenant_id, tier, salience DESC);
+
+-- SESSIONS
+CREATE TABLE IF NOT EXISTS sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    revoked_at TIMESTAMP WITH TIME ZONE,
+    revocation_reason TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+
+-- AUTH TOKENS (Email Verification, Password Reset)
+CREATE TABLE IF NOT EXISTS tokens (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    token_type VARCHAR(32) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    consumed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_tokens_token_hash ON tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
+
+-- TRANSACTIONAL EMAIL OUTBOX
+CREATE TABLE IF NOT EXISTS email_outbox (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient VARCHAR(255) NOT NULL,
+    template VARCHAR(64) NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+    error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    sent_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_outbox_status ON email_outbox(status);
+
+-- AUDIT EVENTS
+CREATE TABLE IF NOT EXISTS audit_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    event_type VARCHAR(64) NOT NULL,
+    details JSONB NOT NULL DEFAULT '{}',
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at);

@@ -2,6 +2,10 @@
 -- Solyra PostgreSQL Rollback Schema
 -- Drops tables in reverse dependency order
 -- ============================================================================
+DROP TABLE IF EXISTS audit_events CASCADE;
+DROP TABLE IF EXISTS email_outbox CASCADE;
+DROP TABLE IF EXISTS tokens CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
 DROP TABLE IF EXISTS knowledge_nodes CASCADE;
 DROP TABLE IF EXISTS memory_records CASCADE;
 DROP TABLE IF EXISTS chat_messages CASCADE;

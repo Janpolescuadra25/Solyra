@@ -5,7 +5,15 @@ import {
   BrainPackageManifest,
   BoundedAstProgram,
   SystemPriority,
-  ArousalLevel
+  ArousalLevel,
+  AccountState,
+  AuditEvent,
+  AuditEventType,
+  AuthToken,
+  AuthTokenType,
+  EmailOutboxEntry,
+  EmailOutboxStatus,
+  AuthSession
 } from './index';
 
 // 1. Verify Council contracts
@@ -47,9 +55,50 @@ const sampleAst: BoundedAstProgram = {
   ]
 };
 
-// 4. Verify existing contracts remain functional
+// 4. Verify account, session, audit, and email contracts remain functional
 const priority: SystemPriority = SystemPriority.NORMAL;
 const arousal: ArousalLevel = ArousalLevel.ENGAGED;
+const sampleSession: AuthSession = {
+  id: 'session-001',
+  userId: 'user-001',
+  workspaceId: 'workspace-001',
+  tokenHash: 'hash-123',
+  expiresAt: new Date(Date.now() + 3600_000),
+  createdAt: new Date(),
+  revokedAt: null,
+  revocationReason: null
+};
+const sampleAccountState: AccountState = AccountState.ACTIVE;
+const sampleAuditEvent: AuditEvent = {
+  id: 'audit-001',
+  userId: 'user-001',
+  workspaceId: 'workspace-001',
+  eventType: AuditEventType.USER_LOGIN,
+  details: { method: 'password' },
+  ipAddress: '127.0.0.1',
+  userAgent: 'Solyra-Test',
+  createdAt: new Date()
+};
+const sampleEmailOutboxEntry: EmailOutboxEntry = {
+  id: 'email-001',
+  userId: 'user-001',
+  recipient: 'user@example.com',
+  template: 'email_verification',
+  payload: { code: '123456' },
+  status: EmailOutboxStatus.PENDING,
+  error: null,
+  createdAt: new Date(),
+  sentAt: null
+};
+const sampleAuthToken: AuthToken = {
+  id: 'token-001',
+  userId: 'user-001',
+  tokenHash: 'token-hash',
+  tokenType: AuthTokenType.EMAIL_VERIFICATION,
+  expiresAt: new Date(Date.now() + 3600_000),
+  createdAt: new Date(),
+  consumedAt: null
+};
 
 console.log('CONTRACT_VERIFICATION_SUCCESS:', {
   role: sampleRole,
@@ -57,5 +106,10 @@ console.log('CONTRACT_VERIFICATION_SUCCESS:', {
   brainId: sampleManifest.brainId,
   programId: sampleAst.programId,
   priority,
-  arousal
+  arousal,
+  sessionId: sampleSession.id,
+  accountState: sampleAccountState,
+  auditEvent: sampleAuditEvent.eventType,
+  emailStatus: sampleEmailOutboxEntry.status,
+  tokenType: sampleAuthToken.tokenType
 });

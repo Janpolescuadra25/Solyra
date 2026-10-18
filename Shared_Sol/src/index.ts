@@ -1,4 +1,5 @@
 export * from './ast.js';
+export * from './contracts.verify.js';
 
 /**
  * Solyra Core Types & System Contracts
@@ -111,6 +112,7 @@ export interface User {
   passwordHash?: string;
   fullName: string;
   avatarUrl?: string;
+  accountState?: AccountState;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -151,6 +153,77 @@ export interface AuthSession {
   userAgent?: string;
   expiresAt: Date;
   createdAt: Date;
+  revokedAt?: Date | string | null;
+  revocationReason?: string | null;
+}
+
+export enum AccountState {
+  REGISTERED = 'REGISTERED',
+  PENDING_VERIFICATION = 'PENDING_VERIFICATION',
+  ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
+  DELETION_PENDING = 'DELETION_PENDING',
+  DELETED = 'DELETED',
+}
+
+export enum AuditEventType {
+  USER_SIGNUP = 'USER_SIGNUP',
+  USER_LOGIN = 'USER_LOGIN',
+  USER_LOGOUT = 'USER_LOGOUT',
+  PASSWORD_RESET_REQUESTED = 'PASSWORD_RESET_REQUESTED',
+  PASSWORD_RESET_COMPLETED = 'PASSWORD_RESET_COMPLETED',
+  EMAIL_VERIFIED = 'EMAIL_VERIFIED',
+  SESSION_REVOKED = 'SESSION_REVOKED',
+  ONBOARDING_COMPLETED = 'ONBOARDING_COMPLETED',
+  PACKAGE_ACTIVATED = 'PACKAGE_ACTIVATED',
+  PACKAGE_DEACTIVATED = 'PACKAGE_DEACTIVATED',
+  PACKAGE_ROLLED_BACK = 'PACKAGE_ROLLED_BACK',
+  ADMIN_ACTION = 'ADMIN_ACTION',
+}
+
+export interface AuditEvent {
+  id: string;
+  userId?: string | null;
+  workspaceId?: string | null;
+  eventType: AuditEventType;
+  details: Record<string, unknown>;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+  createdAt: Date | string;
+}
+
+export enum EmailOutboxStatus {
+  PENDING = 'PENDING',
+  SENT = 'SENT',
+  FAILED = 'FAILED',
+}
+
+export interface EmailOutboxEntry {
+  id: string;
+  userId: string;
+  recipient: string;
+  template: string;
+  payload: Record<string, unknown>;
+  status: EmailOutboxStatus;
+  error?: string | null;
+  createdAt: Date | string;
+  sentAt?: Date | string | null;
+}
+
+export enum AuthTokenType {
+  EMAIL_VERIFICATION = 'EMAIL_VERIFICATION',
+  PASSWORD_RESET = 'PASSWORD_RESET',
+  REFRESH = 'REFRESH',
+}
+
+export interface AuthToken {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  tokenType: AuthTokenType;
+  expiresAt: Date | string;
+  consumedAt?: Date | string | null;
+  createdAt: Date | string;
 }
 
 export interface SessionTokenPayload {
