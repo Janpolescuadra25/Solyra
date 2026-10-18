@@ -108,11 +108,15 @@ export type UserRole = 'owner' | 'admin' | 'member' | 'guest';
 export interface User {
   id: string;
   email: string;
-  passwordHash?: string;
+  passwordHash: string;
   fullName: string;
   avatarUrl?: string;
-  accountState?: AccountState;
+  role: string;
   isActive: boolean;
+  isGuest: boolean;
+  onboardingState: 'pending' | 'in_progress' | 'completed';
+  failedLoginAttempts: number;
+  lockedUntil: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }

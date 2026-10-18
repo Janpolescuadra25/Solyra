@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 
-import type { SessionTokenPayload, UserRole } from '@solyra/shared';
+import type { SessionTokenPayload, User, UserRole } from '@solyra/shared';
 import type { PostgresPersistenceBundle } from '../persistence/postgres/index.js';
 import {
   comparePassword,
@@ -18,10 +18,12 @@ export interface SafeUserDto {
   id: string;
   email: string;
   fullName: string;
+  role: string;
   isActive: boolean;
-  avatarUrl?: string | null;
-  createdAt?: Date;
-  updatedAt?: Date;
+  isGuest: boolean;
+  onboardingState: 'pending' | 'in_progress' | 'completed';
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 type AuthSessionSummary = {
@@ -54,23 +56,17 @@ export class AuthService {
     return getResolvedJwtSecret();
   }
 
-  private mapUserToSafeDto(user: {
-    id: string;
-    email: string;
-    fullName: string;
-    isActive: boolean;
-    avatarUrl?: string | null;
-    createdAt?: Date | string | null;
-    updatedAt?: Date | string | null;
-  }): SafeUserDto {
+  private mapUserToSafeDto(user: User): SafeUserDto {
     return {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
+      role: user.role ?? 'user',
       isActive: user.isActive,
-      avatarUrl: user.avatarUrl ?? null,
-      createdAt: user.createdAt ? new Date(user.createdAt) : undefined,
-      updatedAt: user.updatedAt ? new Date(user.updatedAt) : undefined,
+      isGuest: user.isGuest,
+      onboardingState: user.onboardingState,
+      createdAt: user.createdAt ? new Date(user.createdAt) : new Date(),
+      updatedAt: user.updatedAt ? new Date(user.updatedAt) : new Date(),
     };
   }
 
@@ -101,13 +97,20 @@ export class AuthService {
       const passwordHash = await hashPassword(data.password);
       const fullName = data.fullName.trim();
 
-      await client.query(
-        `
-          INSERT INTO users (id, email, password_hash, full_name, is_active, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, TRUE, NOW(), NOW())
-        `,
-        [userId, normalizedEmail, passwordHash, fullName]
-      );
+      const createdUser = await this.bundle.users.create({
+        id: userId,
+        email: normalizedEmail,
+        passwordHash,
+        fullName,
+        role: 'user',
+        isActive: true,
+        isGuest: false,
+        onboardingState: 'pending',
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
 
       const workspaceId = randomUUID();
       const workspaceSlug = `${fullName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workspace'}-${workspaceId.slice(0, 8)}`;
@@ -118,7 +121,7 @@ export class AuthService {
           INSERT INTO workspaces (id, slug, name, owner_id, is_isolated, settings, created_at, updated_at)
           VALUES ($1, $2, $3, $4, FALSE, '{}'::jsonb, NOW(), NOW())
         `,
-        [workspaceId, workspaceSlug, workspaceName, userId]
+        [workspaceId, workspaceSlug, workspaceName, createdUser.id]
       );
 
       const verificationToken = generateSecureToken();
@@ -130,7 +133,7 @@ export class AuthService {
           INSERT INTO tokens (id, user_id, token_hash, token_type, created_at, expires_at, consumed_at)
           VALUES ($1, $2, $3, $4, NOW(), $5, NULL)
         `,
-        [randomUUID(), userId, verificationHash, 'EMAIL_VERIFICATION', expiresAt]
+        [randomUUID(), createdUser.id, verificationHash, 'EMAIL_VERIFICATION', expiresAt]
       );
 
       await client.query(
@@ -140,7 +143,7 @@ export class AuthService {
         `,
         [
           randomUUID(),
-          userId,
+          createdUser.id,
           normalizedEmail,
           'email_verification',
           JSON.stringify({
@@ -151,30 +154,23 @@ export class AuthService {
         ]
       );
 
-      await client.query(
-        `
-          INSERT INTO audit_events (id, user_id, workspace_id, event_type, details, ip_address, user_agent, created_at)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-        `,
-        [
-          randomUUID(),
-          userId,
+      await this.bundle.audit.recordEvent({
+        eventType: 'USER_SIGNUP',
+        userId: createdUser.id,
+        workspaceId,
+        details: {
+          email: normalizedEmail,
+          fullName,
           workspaceId,
-          'USER_SIGNUP',
-          JSON.stringify({
-            email: normalizedEmail,
-            fullName,
-            workspaceId,
-          }),
-          data.ipAddress ?? null,
-          data.userAgent ?? null,
-        ]
-      );
+        },
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
+      });
 
       await client.query('COMMIT');
       return {
         user: {
-          id: userId,
+          id: createdUser.id,
           email: normalizedEmail,
           fullName,
         },
@@ -206,16 +202,51 @@ export class AuthService {
       throw this.buildAuthError('Invalid email or password', 401);
     }
 
+    if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {
+      await this.bundle.audit.recordEvent({
+        eventType: 'LOGIN_BLOCKED_ACCOUNT_LOCKED',
+        userId: user.id,
+        details: {
+          email: normalizedEmail,
+          lockedUntil: user.lockedUntil,
+        },
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
+      });
+      throw this.buildAuthError('Account is temporarily locked due to multiple failed login attempts. Please try again later.', 403);
+    }
+
     const passwordIsValid = user.passwordHash ? await comparePassword(data.password, user.passwordHash) : false;
     if (!passwordIsValid) {
+      const attempts = await this.bundle.users.incrementFailedLoginAttempts(user.id);
+      if (attempts >= 5) {
+        const lockUntil = new Date(Date.now() + 15 * 60 * 1000);
+        await this.bundle.users.lockUserAccount(user.id, lockUntil);
+        await this.bundle.audit.recordEvent({
+          eventType: 'ACCOUNT_LOCKED',
+          userId: user.id,
+          details: {
+            email: normalizedEmail,
+            attempts,
+            lockedUntil: lockUntil.toISOString(),
+          },
+          ipAddress: data.ipAddress,
+          userAgent: data.userAgent,
+        });
+      }
+
       await this.bundle.audit.recordEvent({
         eventType: 'USER_LOGIN_FAILED',
         userId: user.id,
-        details: { email: normalizedEmail },
+        details: { email: normalizedEmail, attempts: user.failedLoginAttempts + 1 },
         ipAddress: data.ipAddress,
         userAgent: data.userAgent,
       });
       throw this.buildAuthError('Invalid email or password', 401);
+    }
+
+    if (user.failedLoginAttempts > 0 || user.lockedUntil) {
+      await this.bundle.users.resetFailedLoginAttempts(user.id);
     }
 
     const workspaces = await this.bundle.workspaces.listByOwner(user.id);
@@ -338,6 +369,186 @@ export class AuthService {
     } finally {
       client.release();
     }
+  }
+
+  async forgotPassword(
+    email: string,
+    metadata: { ipAddress?: string; userAgent?: string } = {}
+  ): Promise<{ success: true; message: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const neutralResponse = {
+      success: true,
+      message: 'If that email is registered, recovery instructions have been sent.',
+    } satisfies { success: true; message: string };
+
+    const user = await this.bundle.users.findByEmail(normalizedEmail);
+    if (!user) {
+      return neutralResponse;
+    }
+
+    if (user.isGuest) {
+      return neutralResponse;
+    }
+
+    const rawToken = generateSecureToken();
+    const tokenHash = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    await this.bundle.pool.query(
+      `
+        INSERT INTO tokens (id, user_id, token_hash, token_type, created_at, expires_at, consumed_at)
+        VALUES ($1, $2, $3, $4, NOW(), $5, NULL)
+      `,
+      [randomUUID(), user.id, tokenHash, 'PASSWORD_RESET', expiresAt]
+    );
+
+    if (this.bundle.emailOutbox && typeof this.bundle.emailOutbox.queueEmail === 'function') {
+      await this.bundle.emailOutbox.queueEmail({
+        userId: user.id,
+        recipientEmail: user.email,
+        subject: 'Reset your password',
+        template: 'PASSWORD_RESET',
+        payload: {
+          recipientName: user.fullName,
+          token: rawToken,
+        },
+      });
+    }
+
+    await this.bundle.audit.recordEvent({
+      eventType: 'PASSWORD_RESET_REQUESTED',
+      userId: user.id,
+      details: {
+        email: normalizedEmail,
+        expiresAt: expiresAt.toISOString(),
+      },
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+
+    return neutralResponse;
+  }
+
+  async resetPassword(
+    token: string,
+    newPassword: string,
+    metadata: { ipAddress?: string; userAgent?: string } = {}
+  ): Promise<{ success: true; message: string }> {
+    const isComplex =
+      newPassword.length >= 8 &&
+      /[A-Z]/.test(newPassword) &&
+      /[a-z]/.test(newPassword) &&
+      /[0-9]/.test(newPassword);
+
+    if (!isComplex) {
+      throw this.buildAuthError(
+        'Password must be at least 8 characters long and contain uppercase, lowercase, and numeric characters',
+        400
+      );
+    }
+
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const tokenHash = hashToken(token);
+      const tokenResult = await client.query(
+        `
+          SELECT *
+          FROM tokens
+          WHERE token_hash = $1
+            AND token_type = 'PASSWORD_RESET'
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          FOR UPDATE
+        `,
+        [tokenHash]
+      );
+
+      const tokenRecord = tokenResult.rows[0];
+      if (!tokenRecord) {
+        await client.query('ROLLBACK');
+        throw this.buildAuthError('Invalid or expired password reset token', 400);
+      }
+
+      const passwordHash = await hashPassword(newPassword);
+      await client.query('UPDATE tokens SET consumed_at = NOW() WHERE id = $1', [tokenRecord.id]);
+      await this.bundle.users.updatePassword(tokenRecord.user_id, passwordHash);
+      await this.bundle.users.resetFailedLoginAttempts(tokenRecord.user_id);
+      await this.bundle.sessions.revokeAllUserSessions(tokenRecord.user_id);
+
+      await this.bundle.audit.recordEvent({
+        eventType: 'PASSWORD_RESET_COMPLETED',
+        userId: tokenRecord.user_id,
+        details: {
+          tokenType: 'PASSWORD_RESET',
+          email: tokenRecord.user_id,
+        },
+        ipAddress: metadata.ipAddress,
+        userAgent: metadata.userAgent,
+      });
+
+      await client.query('COMMIT');
+      return {
+        success: true,
+        message: 'Password has been reset successfully. Please log in with your new password.',
+      };
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getOnboardingState(userId: string): Promise<{ onboardingState: 'pending' | 'in_progress' | 'completed' }> {
+    const user = await this.bundle.users.findById(userId);
+    if (!user) {
+      throw this.buildAuthError('User not found.', 404);
+    }
+
+    if (user.isGuest) {
+      throw this.buildAuthError('Guest accounts cannot perform onboarding operations', 403);
+    }
+
+    return { onboardingState: user.onboardingState };
+  }
+
+  async updateOnboardingState(
+    userId: string,
+    state: string,
+    metadata: { ipAddress?: string; userAgent?: string } = {}
+  ): Promise<SafeUserDto> {
+    if (!['pending', 'in_progress', 'completed'].includes(state)) {
+      throw this.buildAuthError('Invalid onboarding state', 400);
+    }
+
+    const user = await this.bundle.users.findById(userId);
+    if (!user) {
+      throw this.buildAuthError('User not found.', 404);
+    }
+
+    if (user.isGuest) {
+      throw this.buildAuthError('Guest accounts cannot perform onboarding operations', 403);
+    }
+
+    const updatedUser = await this.bundle.users.updateOnboardingState(userId, state as 'pending' | 'in_progress' | 'completed');
+    if (!updatedUser) {
+      throw this.buildAuthError('Unable to update onboarding state.', 500);
+    }
+
+    await this.bundle.audit.recordEvent({
+      eventType: 'ONBOARDING_STATE_UPDATED',
+      userId,
+      details: {
+        previousState: user.onboardingState,
+        updatedState: state,
+      },
+      ipAddress: metadata.ipAddress,
+      userAgent: metadata.userAgent,
+    });
+
+    return this.mapUserToSafeDto(updatedUser);
   }
 
   async getMe(

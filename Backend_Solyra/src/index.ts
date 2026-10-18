@@ -17,6 +17,9 @@ const startTime = Date.now();
 const postgresBundle = createPostgresPersistence(getPgPool());
 const authService = new AuthService(postgresBundle, getPgPool());
 const authRateLimiter = new RateLimiter(15 * 60 * 1000, 10);
+const loginRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
+const forgotPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 3);
+const resetPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
 let drainTimer: NodeJS.Timeout | null = null;
 let astStats = {
   validationsCount: 0,
@@ -592,7 +595,7 @@ export const server = http.createServer(async (req, res) => {
 
   if (requestPath === '/auth/login' && method === 'POST') {
     const rateKey = `login:${req.socket.remoteAddress || 'unknown'}`;
-    const rateLimit = authRateLimiter.check(rateKey);
+    const rateLimit = loginRateLimiter.check(rateKey);
     if (!rateLimit.allowed) {
       sendJsonResponse(res, 429, {
         success: false,
@@ -620,6 +623,133 @@ export const server = http.createServer(async (req, res) => {
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/forgot-password' && method === 'POST') {
+    const rateKey = `forgot-password:${req.socket.remoteAddress || 'unknown'}`;
+    const rateLimit = forgotPasswordRateLimiter.check(rateKey);
+    if (!rateLimit.allowed) {
+      sendJsonResponse(res, 429, {
+        success: false,
+        error: 'Too many password-reset requests. Please try again later.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.email !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'email is required' });
+        return;
+      }
+
+      const email = body.email.trim();
+      const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailPattern.test(email)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Invalid email format' });
+        return;
+      }
+
+      const result = await authService.forgotPassword(email, {
+        ipAddress: typeof body.ipAddress === 'string' ? body.ipAddress : undefined,
+        userAgent: typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] as string | undefined,
+      });
+
+      sendJsonResponse(res, 200, { success: true, message: result.message });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Password reset request failed';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/reset-password' && method === 'POST') {
+    const rateKey = `reset-password:${req.socket.remoteAddress || 'unknown'}`;
+    const rateLimit = resetPasswordRateLimiter.check(rateKey);
+    if (!rateLimit.allowed) {
+      sendJsonResponse(res, 429, {
+        success: false,
+        error: 'Too many password resets. Please try again later.',
+        retryAfterSeconds: rateLimit.retryAfterSeconds,
+      });
+      return;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.token !== 'string' || typeof body.newPassword !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'token and newPassword are required' });
+        return;
+      }
+
+      const result = await authService.resetPassword(body.token, body.newPassword, {
+        ipAddress: typeof body.ipAddress === 'string' ? body.ipAddress : undefined,
+        userAgent: typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] as string | undefined,
+      });
+
+      sendJsonResponse(res, 200, { success: true, message: result.message });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Password reset failed';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/onboarding' && method === 'GET') {
+    const authenticated = await authenticateRequest(req, res, postgresBundle);
+    if (!authenticated || !req.user) {
+      return;
+    }
+
+    try {
+      const result = await authService.getOnboardingState(req.user.sub);
+      sendJsonResponse(res, 200, { success: true, onboardingState: result.onboardingState });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load onboarding state';
+      const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      sendJsonResponse(res, statusCode, { success: false, error: message });
+      return;
+    }
+  }
+
+  if (requestPath === '/auth/onboarding' && method === 'POST') {
+    const authenticated = await authenticateRequest(req, res, postgresBundle);
+    if (!authenticated || !req.user) {
+      return;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.onboardingState !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'onboardingState is required' });
+        return;
+      }
+
+      const onboardingState = body.onboardingState;
+      if (!['pending', 'in_progress', 'completed'].includes(onboardingState)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Invalid onboarding state' });
+        return;
+      }
+
+      const updatedUser = await authService.updateOnboardingState(req.user.sub, onboardingState, {
+        ipAddress: typeof body.ipAddress === 'string' ? body.ipAddress : undefined,
+        userAgent: typeof body.userAgent === 'string' ? body.userAgent : req.headers['user-agent'] as string | undefined,
+      });
+
+      sendJsonResponse(res, 200, { success: true, user: updatedUser });
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to update onboarding state';
       const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
       sendJsonResponse(res, statusCode, { success: false, error: message });
       return;

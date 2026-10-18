@@ -4,15 +4,38 @@
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(64) PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255),
+    password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(255) NOT NULL,
-    avatar_url TEXT,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+    role VARCHAR(32) DEFAULT 'user' NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE NOT NULL,
+    is_guest BOOLEAN DEFAULT FALSE NOT NULL,
+    onboarding_state VARCHAR(32) DEFAULT 'pending' NOT NULL,
+    failed_login_attempts INT DEFAULT 0 NOT NULL,
+    locked_until TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    CONSTRAINT chk_users_onboarding_state CHECK (onboarding_state IN ('pending', 'in_progress', 'completed'))
 );
+
+-- Safe UUID Migration for existing installations
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_name = 'users' AND column_name = 'id' AND data_type = 'character varying'
+  ) THEN
+    ALTER TABLE users ALTER COLUMN id TYPE UUID USING (
+      CASE
+        WHEN id ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          THEN id::uuid
+        ELSE gen_random_uuid()
+      END
+    );
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
@@ -166,6 +189,7 @@ CREATE TABLE IF NOT EXISTS tokens (
 
 CREATE INDEX IF NOT EXISTS idx_tokens_token_hash ON tokens(token_hash);
 CREATE INDEX IF NOT EXISTS idx_tokens_user_id ON tokens(user_id);
+CREATE INDEX IF NOT EXISTS idx_tokens_hash_type ON tokens(token_hash, token_type);
 
 -- TRANSACTIONAL EMAIL OUTBOX
 CREATE TABLE IF NOT EXISTS email_outbox (

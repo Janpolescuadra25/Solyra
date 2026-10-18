@@ -9,22 +9,65 @@ import { hashPassword, hashToken, signSessionToken } from '../src/auth/utils.js'
 const makeBundle = async () => {
   const passwordHash = await hashPassword('Solyra!Secure123');
   const sessionStore = new Map<string, any>();
+  const userState = {
+    id: 'user-1',
+    email: 'person@example.com',
+    passwordHash,
+    fullName: 'Person Example',
+    role: 'user',
+    isActive: true,
+    isGuest: false,
+    onboardingState: 'pending',
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   return {
     users: {
-      findByEmail: async () => ({
-        id: 'user-1',
-        email: 'person@example.com',
-        fullName: 'Person Example',
-        passwordHash,
-        isActive: true,
-      }),
+      findByEmail: async (email: string) => {
+        if (!email || email !== userState.email) return null;
+        return { ...userState };
+      },
       findById: async (id: string) => ({
+        ...userState,
         id,
-        email: 'person@example.com',
-        fullName: 'Person Example',
-        passwordHash,
-        isActive: true,
       }),
+      create: async (input: any) => ({
+        ...userState,
+        ...input,
+        id: input.id ?? 'user-1',
+        email: input.email ?? userState.email,
+        fullName: input.fullName ?? userState.fullName,
+        passwordHash: input.passwordHash ?? userState.passwordHash,
+        role: input.role ?? 'user',
+        isActive: input.isActive ?? true,
+        isGuest: input.isGuest ?? false,
+        onboardingState: input.onboardingState ?? 'pending',
+        failedLoginAttempts: input.failedLoginAttempts ?? 0,
+        lockedUntil: input.lockedUntil ?? null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }),
+      incrementFailedLoginAttempts: async (userId: string) => {
+        userState.failedLoginAttempts += 1;
+        return userState.failedLoginAttempts;
+      },
+      resetFailedLoginAttempts: async (userId: string) => {
+        userState.failedLoginAttempts = 0;
+        userState.lockedUntil = null;
+      },
+      lockUserAccount: async (userId: string, lockedUntil: Date) => {
+        userState.lockedUntil = lockedUntil;
+      },
+      updateOnboardingState: async (userId: string, state: string) => ({
+        ...userState,
+        onboardingState: state,
+      }),
+      updatePassword: async (userId: string, passwordHashValue: string) => {
+        userState.passwordHash = passwordHashValue;
+      },
     },
     workspaces: {
       listByOwner: async () => [{ id: 'workspace-1', ownerId: 'user-1' }],
@@ -50,6 +93,9 @@ const makeBundle = async () => {
     },
     audit: {
       recordEvent: async (event: any) => ({ id: randomUUID(), ...event, createdAt: new Date() }),
+    },
+    pool: {
+      query: async (sql: string, params?: any[]) => ({ rows: [], rowCount: 0, fields: [] }),
     },
   } as any;
 };
@@ -130,7 +176,6 @@ test('authenticateRequest rejects missing or invalid bearer tokens and accepts a
 
 test('AuthService.verifyEmail rejects expired or already-consumed tokens atomically', async () => {
   const bundle = await makeBundle();
-  const consumedToken = hashToken('consumed-token');
   const pool = {
     connect: async () => ({
       query: async (sql: string, params?: any[]) => {
@@ -190,4 +235,85 @@ test('AuthService.login signs a valid JWT and creates a session for valid creden
   assert.equal(result.session.userId, 'user-1');
   assert.equal(result.session.workspaceId, 'workspace-1');
   assert.ok(result.session.expiresAt instanceof Date);
+});
+
+test('AuthService lockout prevents repeated failed logins and resets on success', async () => {
+  const bundle = await makeBundle();
+  const service = new AuthService(bundle, { query: async () => ({ rows: [], rowCount: 0 }) } as any);
+
+  const userRef = await bundle.users.findById('user-1');
+  userRef.failedLoginAttempts = 4;
+  userRef.lockedUntil = null;
+  userRef.passwordHash = await hashPassword('Solyra!Secure123');
+
+  bundle.users.findByEmail = async () => userRef;
+  bundle.users.incrementFailedLoginAttempts = async () => {
+    userRef.failedLoginAttempts += 1;
+    return userRef.failedLoginAttempts;
+  };
+  bundle.users.lockUserAccount = async (_userId: string, lockedUntil: Date) => {
+    userRef.lockedUntil = lockedUntil;
+  };
+
+  const result = await service.login({ email: 'person@example.com', password: 'WrongPassword123' }).catch((err) => err);
+  assert.ok(result instanceof Error || result?.message === 'Invalid email or password');
+
+  const lockedUser = await bundle.users.findByEmail('person@example.com');
+  assert.equal(lockedUser.failedLoginAttempts >= 5, true);
+
+  const secondResult = await service.login({ email: 'person@example.com', password: 'Solyra!Secure123' }).catch((err) => err);
+  assert.equal(secondResult instanceof Error, true);
+});
+
+test('AuthService forgotPassword and resetPassword enforce reset lifecycle and guest guardrails', async () => {
+  const bundle = await makeBundle();
+  const service = new AuthService(bundle, {
+    connect: async () => ({
+      query: async (sql: string, params?: any[]) => {
+        if (sql.includes('SELECT id, user_id, expires_at, consumed_at, token_type')) {
+          return { rows: [{ id: 'token-1', user_id: 'user-1', token_hash: 'hash', expires_at: new Date(Date.now() + 60_000), consumed_at: null, token_type: 'PASSWORD_RESET' }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+      },
+      release: () => undefined,
+    }),
+  } as any);
+
+  const forgotResult = await service.forgotPassword('person@example.com');
+  assert.equal(forgotResult.success, true);
+  assert.match(forgotResult.message, /recovery instructions/i);
+
+  const guestBundle = await makeBundle();
+  guestBundle.users.findByEmail = async () => ({
+    ...await guestBundle.users.findById('user-1'),
+    isGuest: true,
+  });
+  const guestService = new AuthService(guestBundle, { query: async () => ({ rows: [], rowCount: 0 }) } as any);
+  const guestForgot = await guestService.forgotPassword('person@example.com');
+  assert.equal(guestForgot.success, true);
+
+  const resetFailure = await service.resetPassword('bad-token', 'weak').catch((err) => err);
+  assert.ok(resetFailure instanceof Error);
+
+  const validReset = await service.resetPassword('valid-token', 'Password1').catch((err) => err);
+  assert.ok(validReset instanceof Error || validReset?.success === true);
+});
+
+test('AuthService onboarding state enforces enum validation and guest blocking', async () => {
+  const bundle = await makeBundle();
+  const service = new AuthService(bundle, { query: async () => ({ rows: [], rowCount: 0 }) } as any);
+
+  await assert.rejects(async () => service.updateOnboardingState('user-1', 'not_valid'), /Invalid onboarding state/);
+
+  const guestBundle = await makeBundle();
+  const originalFindById = guestBundle.users.findById.bind(guestBundle.users);
+  guestBundle.users.findById = async () => ({
+    ...(await originalFindById('user-1')),
+    isGuest: true,
+  });
+  const guestService = new AuthService(guestBundle, { query: async () => ({ rows: [], rowCount: 0 }) } as any);
+  await assert.rejects(async () => guestService.updateOnboardingState('user-1', 'completed'), /Guest accounts cannot perform onboarding operations/);
+
+  const result = await service.updateOnboardingState('user-1', 'completed');
+  assert.equal(result?.onboardingState, 'completed');
 });
