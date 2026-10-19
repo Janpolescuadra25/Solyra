@@ -14,7 +14,8 @@ export interface ISessionRepository {
   }): Promise<AuthSession>;
   findSessionById(sessionId: string): Promise<AuthSession | null>;
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
-  revokeSession(sessionId: string): Promise<void>;
+  listActiveSessions(limit?: number): Promise<AuthSession[]>;
+  revokeSession(sessionId: string, reason?: string): Promise<boolean>;
   revokeAllUserSessions(userId: string): Promise<void>;
 }
 
@@ -75,11 +76,32 @@ export class SessionRepository implements ISessionRepository {
     return this.mapRow(res.rows[0]);
   }
 
-  async revokeSession(sessionId: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE sessions SET revoked_at = NOW(), revocation_reason = $1 WHERE id = $2`,
-      ['user_logout', sessionId]
+  async listActiveSessions(limit = 50): Promise<AuthSession[]> {
+    const safeLimit = Math.min(Math.max(1, limit), 200);
+    const res = await this.pool.query(
+      `
+        SELECT id, user_id, workspace_id, token_hash, expires_at, created_at, revoked_at, revocation_reason, ip_address, user_agent
+        FROM sessions
+        WHERE revoked_at IS NULL AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT $1
+      `,
+      [safeLimit]
     );
+
+    return res.rows.map((row: any) => this.mapRow(row));
+  }
+
+  async revokeSession(sessionId: string, reason = 'user_logout'): Promise<boolean> {
+    const result = await this.pool.query(
+      `
+        UPDATE sessions
+        SET revoked_at = NOW(), revocation_reason = $2
+        WHERE id = $1 AND revoked_at IS NULL
+      `,
+      [sessionId, reason]
+    );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async revokeAllUserSessions(userId: string): Promise<void> {

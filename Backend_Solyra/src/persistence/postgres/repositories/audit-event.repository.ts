@@ -14,6 +14,7 @@ export interface IAuditEventRepository {
   }): Promise<AuditEvent>;
   findEventsByUserId(userId: string, limit?: number): Promise<AuditEvent[]>;
   findEventsByWorkspaceId(workspaceId: string, limit?: number): Promise<AuditEvent[]>;
+  listRecentEvents(limit?: number): Promise<AuditEvent[]>;
 }
 
 export class AuditEventRepository implements IAuditEventRepository {
@@ -74,6 +75,20 @@ export class AuditEventRepository implements IAuditEventRepository {
     const res = await this.pool.query(
       `SELECT * FROM audit_events WHERE workspace_id = $1 ORDER BY created_at DESC LIMIT $2`,
       [workspaceId, limit]
+    );
+    return res.rows.map((row: any) => this.mapRow(row));
+  }
+
+  async listRecentEvents(limit = 50): Promise<AuditEvent[]> {
+    const safeLimit = Math.min(Math.max(1, limit), 200);
+    const res = await this.pool.query(
+      `
+        SELECT id, event_type, user_id, workspace_id, details, ip_address, user_agent, created_at
+        FROM audit_events
+        ORDER BY created_at DESC
+        LIMIT $1
+      `,
+      [safeLimit]
     );
     return res.rows.map((row: any) => this.mapRow(row));
   }
