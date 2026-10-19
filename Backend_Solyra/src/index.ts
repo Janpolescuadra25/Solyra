@@ -143,7 +143,16 @@ const shutdownServer = (): void => {
 process.on('SIGTERM', shutdownServer);
 process.on('SIGINT', shutdownServer);
 
-export const server = http.createServer(async (req, res) => {
+export async function requireOwnerAuth(req: any, res: any, bundle: any): Promise<boolean> {
+  const authed = await authenticateRequest(req, res, bundle);
+  if (!authed) return false;
+  if (!req.user || (req.user.role !== 'owner' && req.user.role !== 'admin')) {
+    sendJsonResponse(res, 403, { success: false, error: 'Forbidden: Owner or administrator privilege required' });
+    return false;
+  }
+  return true;
+}
+const server = http.createServer(async (req, res) => {
   const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
@@ -383,24 +392,32 @@ export const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && requestPath === '/thalamus/stats') {
+      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
+      if (!isOwner) return;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', data: globalThalamus.getRoutingStats() }));
     return;
   }
 
   if (req.method === 'GET' && requestPath === '/council/stats') {
+      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
+      if (!isOwner) return;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalCouncil.getCouncilStats()));
     return;
   }
 
   if (req.method === 'GET' && requestPath === '/brain/stats') {
+      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
+      if (!isOwner) return;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalBrainLoader.getLoaderStats()));
     return;
   }
 
   if (req.method === 'POST' && requestPath === '/brain/load') {
+      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
+      if (!isOwner) return;
     if (!authenticateProtectedRequest(req)) {
       sendJsonResponse(res, 401, { error: 'Unauthorized: valid Bearer token required' });
       return;
