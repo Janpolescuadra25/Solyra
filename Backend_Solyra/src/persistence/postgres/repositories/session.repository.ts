@@ -16,7 +16,7 @@ export interface ISessionRepository {
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   listActiveSessions(limit?: number): Promise<AuthSession[]>;
   revokeSession(sessionId: string, reason?: string): Promise<boolean>;
-  revokeAllUserSessions(userId: string): Promise<void>;
+  revokeAllUserSessions(userId: string, reason?: string): Promise<number>;
 }
 
 export class SessionRepository implements ISessionRepository {
@@ -26,7 +26,7 @@ export class SessionRepository implements ISessionRepository {
     return {
       id: row.id,
       userId: row.user_id,
-      workspaceId: row.workspace_id,
+      workspaceId: row.workspace_id ?? null,
       tokenHash: row.token_hash,
       ipAddress: row.ip_address ?? undefined,
       userAgent: row.user_agent ?? undefined,
@@ -104,10 +104,11 @@ export class SessionRepository implements ISessionRepository {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async revokeAllUserSessions(userId: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE sessions SET revoked_at = NOW(), revocation_reason = $1 WHERE user_id = $2 AND revoked_at IS NULL`,
-      ['bulk_revoke', userId]
+  async revokeAllUserSessions(userId: string, reason: string = 'bulk_revoke'): Promise<number> {
+    const result = await this.pool.query(
+      `UPDATE sessions SET revoked_at = NOW(), revocation_reason = $2 WHERE user_id = $1 AND revoked_at IS NULL`,
+      [userId, reason]
     );
+    return result.rowCount ?? 0;
   }
 }

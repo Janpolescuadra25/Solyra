@@ -7,7 +7,7 @@ export interface IAuditEventRepository {
     id?: string;
     eventType: string;
     userId?: string;
-    workspaceId?: string;
+    workspaceId?: string | null;
     details?: Record<string, unknown>;
     ipAddress?: string;
     userAgent?: string;
@@ -37,7 +37,7 @@ export class AuditEventRepository implements IAuditEventRepository {
     id?: string;
     eventType: string;
     userId?: string;
-    workspaceId?: string;
+    workspaceId?: string | null;
     details?: Record<string, unknown>;
     ipAddress?: string;
     userAgent?: string;

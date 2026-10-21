@@ -260,7 +260,7 @@ export class AuthService {
     const payload: Record<string, unknown> = {
       sub: user.id,
       workspaceId: primaryWorkspace.id,
-      role: 'member' as UserRole,
+      role: user.role as UserRole,
       iat: issuedAt,
       exp: issuedAt + 7 * 24 * 60 * 60,
       sessionId,

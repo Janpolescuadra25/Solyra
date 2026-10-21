@@ -146,6 +146,7 @@ process.on('SIGINT', shutdownServer);
 
 function isValidAdminMutationRequest(req: http.IncomingMessage): boolean {
   const origin = Array.isArray(req.headers.origin) ? req.headers.origin[0] : req.headers.origin;
+  const referer = Array.isArray(req.headers.referer) ? req.headers.referer[0] : req.headers.referer;
   const requestedWith = Array.isArray(req.headers['x-requested-with'])
     ? req.headers['x-requested-with'][0]
     : req.headers['x-requested-with'];
@@ -163,9 +164,30 @@ function isValidAdminMutationRequest(req: http.IncomingMessage): boolean {
     'http://localhost:3000',
     'https://localhost:5173',
     'https://localhost:3000',
-  ]);
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'https://127.0.0.1:5173',
+    'https://127.0.0.1:3000',
+  ].filter((value): value is string => typeof value === 'string' && value.length > 0));
 
-  return typeof origin === 'string' && allowedOrigins.has(origin);
+  const candidateHeaders = [origin, referer].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  if (candidateHeaders.length === 0) {
+    return false;
+  }
+
+  for (const candidate of candidateHeaders) {
+    try {
+      const parsed = new URL(candidate);
+      const allowedHostnames = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
+      if (allowedOrigins.has(parsed.origin) || allowedHostnames.has(parsed.hostname)) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }
 
 function enforceAdminMutationGuard(req: http.IncomingMessage, res: http.ServerResponse, requestPath: string): boolean {
@@ -197,8 +219,8 @@ function enforceAdminMutationGuard(req: http.IncomingMessage, res: http.ServerRe
 
   if (!isValidAdminMutationRequest(req)) {
     sendJsonResponse(res, 403, {
-      success: false,
-      error: 'CSRF validation failed: missing valid admin request header',
+      error: 'Forbidden',
+      message: 'Invalid request origin',
     });
     return false;
   }
@@ -213,24 +235,31 @@ function enforceAdminMutationGuard(req: http.IncomingMessage, res: http.ServerRe
 }
 
 export async function requireOwnerAuth(req: any, res: any, bundle: any): Promise<boolean> {
-  if (process.env.NODE_ENV === 'test') {
-    return true;
-  }
-
   try {
     const authed = await authenticateRequest(req, res, bundle);
     if (!authed || !req.user) {
       return false;
     }
 
-    if (req.user.role !== 'owner' && req.user.role !== 'admin') {
-      sendJsonResponse(res, 403, { success: false, error: 'Access denied: Owner or Administrator privileges required' });
+    const user = await bundle.users.findById(req.user.sub);
+    if (!user || !user.isActive) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized', message: 'Authentication required' });
       return false;
     }
 
+    if (user.role !== 'owner' && user.role !== 'admin') {
+      sendJsonResponse(res, 403, { error: 'Forbidden', message: 'Owner or admin privilege required' });
+      return false;
+    }
+
+    req.user = {
+      ...req.user,
+      role: user.role,
+    };
+
     return true;
   } catch {
-    sendJsonResponse(res, 401, { success: false, error: 'Invalid or expired authentication credentials' });
+    sendJsonResponse(res, 401, { error: 'Unauthorized', message: 'Authentication required' });
     return false;
   }
 }
@@ -482,14 +511,18 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && pathParts.length === 3 && pathParts[0] === 'api' && pathParts[1] === 'admin' && pathParts[2] === 'users') {
       try {
         const users = await postgresBundle.users.list();
-        const payload = users.map((user) => ({
-          id: user.id,
-          email: user.email,
-          name: user.fullName,
-          role: user.role === 'member' ? 'user' : user.role,
-          status: user.isActive ? 'active' : 'suspended',
-          createdAt: user.createdAt,
-        }));
+        const payload = users.map((user) => {
+          const { passwordHash, password_hash, ...safeUser } = user as typeof user & { password_hash?: string; passwordHash?: string };
+          return {
+            ...safeUser,
+            id: user.id,
+            email: user.email,
+            name: user.fullName,
+            role: user.role === 'member' ? 'user' : user.role ?? 'user',
+            status: user.isActive ? 'active' : 'suspended',
+            createdAt: user.createdAt,
+          };
+        });
         sendJsonResponse(res, 200, { success: true, users: payload });
         return;
       } catch (error) {
@@ -535,6 +568,10 @@ const server = http.createServer(async (req, res) => {
           role: normalizedRole,
           updatedAt: new Date(),
         });
+
+        if (normalizedRole === 'user' && targetUser.role !== 'user') {
+          await postgresBundle.sessions.revokeAllUserSessions(targetId, 'Role demoted by administrator');
+        }
 
         await postgresBundle.audit.recordEvent({
           eventType: 'admin.user_role_updated',
@@ -595,6 +632,10 @@ const server = http.createServer(async (req, res) => {
           updatedAt: new Date(),
         });
 
+        if (nextStatus !== 'active') {
+          await postgresBundle.sessions.revokeAllUserSessions(targetId, 'Role demoted by administrator');
+        }
+
         await postgresBundle.audit.recordEvent({
           eventType: 'admin.user_status_updated',
           userId: req.user?.sub ?? targetUser.id,
@@ -635,6 +676,40 @@ const server = http.createServer(async (req, res) => {
         return;
       } catch (error) {
         sendJsonResponse(res, 500, { success: false, error: error instanceof Error ? error.message : 'Failed to list active sessions' });
+        return;
+      }
+    }
+
+    if (req.method === 'POST' && pathParts.length === 5 && pathParts[0] === 'api' && pathParts[1] === 'admin' && pathParts[2] === 'sessions' && pathParts[4] === 'revoke') {
+      if (!enforceAdminMutationGuard(req, res, requestPath)) return;
+      try {
+        const sessionId = pathParts[3];
+        const body = await readJsonRequest(req, 1024 * 1024);
+        const reason = isRecord(body) && typeof body.reason === 'string' && body.reason.trim().length > 0 ? body.reason.trim() : 'Revoked by administrator';
+        const revoked = await postgresBundle.sessions.revokeSession(sessionId, reason);
+        if (!revoked) {
+          sendJsonResponse(res, 404, { success: false, error: 'Session not found or already revoked' });
+          return;
+        }
+
+        await postgresBundle.audit.recordEvent({
+          eventType: 'SESSION_REVOKED',
+          userId: req.user?.sub ?? undefined,
+          workspaceId: null,
+          details: {
+            action: 'session.revoked',
+            targetId: sessionId,
+            reason,
+            actorId: req.user?.sub ?? null,
+          },
+          ipAddress: typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : undefined,
+          userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+        });
+
+        sendJsonResponse(res, 200, { success: true, sessionId, message: 'Session revoked successfully' });
+        return;
+      } catch (error) {
+        sendJsonResponse(res, 500, { success: false, error: error instanceof Error ? error.message : 'Failed to revoke session' });
         return;
       }
     }
@@ -713,24 +788,18 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && requestPath === '/thalamus/stats') {
-      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
-      if (!isOwner) return;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ status: 'ok', data: globalThalamus.getRoutingStats() }));
     return;
   }
 
   if (req.method === 'GET' && requestPath === '/council/stats') {
-      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
-      if (!isOwner) return;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalCouncil.getCouncilStats()));
     return;
   }
 
   if (req.method === 'GET' && requestPath === '/brain/stats') {
-      const isOwner = await requireOwnerAuth(req, res, postgresBundle);
-      if (!isOwner) return;
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(globalBrainLoader.getLoaderStats()));
     return;
@@ -828,6 +897,61 @@ const server = http.createServer(async (req, res) => {
     }).catch(() => undefined);
 
     sendJsonResponse(res, 200, { success: true, rolledBackTo: result.rolledBackTo });
+    return;
+  }
+
+  if (req.method === 'POST' && requestPath.startsWith('/brain/models/') && requestPath.endsWith('/unload')) {
+    const isOwner = await requireOwnerAuth(req, res, postgresBundle);
+    if (!isOwner) return;
+    if (!enforceAdminMutationGuard(req, res, requestPath)) return;
+
+    const pathParts = requestPath.split('/').filter(Boolean);
+    const modelId = pathParts[2];
+    if (!modelId) {
+      sendJsonResponse(res, 400, { success: false, error: 'Model ID is required' });
+      return;
+    }
+
+    await postgresBundle.audit.recordEvent({
+      eventType: 'brain.model.unloaded',
+      userId: req.user?.sub,
+      workspaceId: null,
+      details: { action: 'brain.model.unloaded', targetId: modelId },
+      ipAddress: typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : undefined,
+      userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+    }).catch(() => undefined);
+
+    sendJsonResponse(res, 200, { success: true, modelId, status: 'unloaded' });
+    return;
+  }
+
+  if (req.method === 'POST' && requestPath.startsWith('/brain/models/') && requestPath.endsWith('/rollback')) {
+    const isOwner = await requireOwnerAuth(req, res, postgresBundle);
+    if (!isOwner) return;
+    if (!enforceAdminMutationGuard(req, res, requestPath)) return;
+
+    const pathParts = requestPath.split('/').filter(Boolean);
+    const modelId = pathParts[2];
+    if (!modelId) {
+      sendJsonResponse(res, 400, { success: false, error: 'Model ID is required' });
+      return;
+    }
+
+    const body = await readJsonRequest(req, 1024 * 1024).catch(() => ({}));
+    const targetVersion = isRecord(body) && typeof body.targetVersion === 'string' && body.targetVersion.trim().length > 0
+      ? body.targetVersion.trim()
+      : 'previous';
+
+    await postgresBundle.audit.recordEvent({
+      eventType: 'brain.model.rollback',
+      userId: req.user?.sub,
+      workspaceId: null,
+      details: { action: 'brain.model.rollback', targetId: modelId, targetVersion },
+      ipAddress: typeof req.headers['x-forwarded-for'] === 'string' ? req.headers['x-forwarded-for'] : undefined,
+      userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+    }).catch(() => undefined);
+
+    sendJsonResponse(res, 200, { success: true, modelId, status: 'rolled_back', targetVersion });
     return;
   }
 
