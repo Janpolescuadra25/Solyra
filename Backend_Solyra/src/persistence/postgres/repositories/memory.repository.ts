@@ -5,6 +5,12 @@ export interface IMemoryRepository {
   store(record: MemoryRecord): Promise<RepositoryResult<void>>;
   retrieve(tenantId: string, tier: MemoryTier, key: string): Promise<RepositoryResult<MemoryRecord | null>>;
   searchBySalience(tenantId: string, tier: MemoryTier, minSalience: number): Promise<RepositoryResult<MemoryRecord[]>>;
+  searchBySemanticSimilarity(
+    tenantId: string,
+    queryEmbedding: number[],
+    minSimilarity?: number,
+    limit?: number,
+  ): Promise<RepositoryResult<MemoryRecord[]>>;
   delete(tenantId: string, tier: MemoryTier, key: string): Promise<RepositoryResult<boolean>>;
 }
 
@@ -124,6 +130,49 @@ export class PostgresMemoryRepository implements IMemoryRepository {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown salience search failure',
+        code: 'MEMORY_SEARCH_FAILED',
+        data: [],
+      };
+    }
+  }
+
+  async searchBySemanticSimilarity(
+    tenantId: string,
+    queryEmbedding: number[],
+    minSimilarity: number = 0.7,
+    limit: number = 10,
+  ): Promise<RepositoryResult<MemoryRecord[]>> {
+    try {
+      if (!Array.isArray(queryEmbedding) || queryEmbedding.length === 0 || queryEmbedding.some((entry) => typeof entry !== 'number' || Number.isNaN(entry))) {
+        throw new Error('queryEmbedding must be a non-empty array of numbers');
+      }
+
+      if (typeof minSimilarity !== 'number' || Number.isNaN(minSimilarity) || minSimilarity < 0 || minSimilarity > 1) {
+        throw new Error('minSimilarity must be a number between 0.0 and 1.0');
+      }
+
+      if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+        throw new Error('limit must be a positive integer between 1 and 100');
+      }
+
+      const res = await this.pool.query(
+        `
+          SELECT *, cosine_similarity(embedding, $2::jsonb) AS similarity
+          FROM memory_records
+          WHERE tenant_id = $1
+            AND embedding IS NOT NULL
+            AND cosine_similarity(embedding, $2::jsonb) >= $3
+          ORDER BY similarity DESC
+          LIMIT $4
+        `,
+        [tenantId, JSON.stringify(queryEmbedding), Number(minSimilarity), Number(limit)],
+      );
+
+      return { success: true, data: res.rows.map((row) => this.mapRow(row)) };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown semantic similarity search failure',
         code: 'MEMORY_SEARCH_FAILED',
         data: [],
       };

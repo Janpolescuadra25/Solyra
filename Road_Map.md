@@ -2,7 +2,11 @@
 
 ## Active Phase
 
-*(Active phase currently clear pending architectural ratification of the Scalable Local/Hybrid Storage Substrates phase)*
+- [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
+  - [ ] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Memory semantic similarity alignment, fail-closed owner account seeding (`paulescuadra25@gmail.com`), and test harness.
+  - [ ] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded off-heap cache and disk-backed tiered storage for high-volume AST rulebases.
+  - [ ] **Step 9.3: Streaming Brain Loader & AST Chunking** — Lazy evaluation and chunked package streaming to remove in-memory ceilings.
+  - [ ] **Step 9.4: Storage Substrate Acceptance Matrix** — Multi-gigabyte rule validation, stress benchmarks, and concurrency gates.
 
 ## Future Phases
 - Scalable local/hybrid storage substrates for multi-gigabyte pure code-logic rulebases, memory vectors, and dynamic weights.
