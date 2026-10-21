@@ -3,7 +3,7 @@
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [ ] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Memory semantic similarity alignment, fail-closed owner account seeding (`paulescuadra25@gmail.com`), and test harness.
+  - [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Memory semantic similarity alignment, fail-closed owner account seeding (`paulescuadra25@gmail.com`), and test harness (completed in commit `27a8aef39173a57a7e7d8554c323b4592525a594`).
   - [ ] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded off-heap cache and disk-backed tiered storage for high-volume AST rulebases.
   - [ ] **Step 9.3: Streaming Brain Loader & AST Chunking** — Lazy evaluation and chunked package streaming to remove in-memory ceilings.
   - [ ] **Step 9.4: Storage Substrate Acceptance Matrix** — Multi-gigabyte rule validation, stress benchmarks, and concurrency gates.
@@ -13,6 +13,9 @@
 - **Strict Author Immutability:** System identity, foundational self-preservation, safety invariants, and core constitution remain non-overwritable by dynamically loaded packages or runtime adaptation.
 
 ---
+
+## Historical Milestones (Completed & Preserved)
+- [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Implemented `IMemoryRepository.searchBySemanticSimilarity` with PostgreSQL `cosine_similarity`, parameter validation (minSimilarity, limit), fail-closed idempotent owner seeding script (`paulescuadra25@gmail.com`) requiring `OWNER_INITIAL_PASSWORD`, added `"db:seed"` package script, and 39/39 passing test suite (completed in commit `27a8aef39173a57a7e7d8554c323b4592525a594`).
 
 ## ARCHIVED: Completed Historical Milestones
 - [x] **Step 8: End-to-End Integration & Security Acceptance Matrix** - Commit: 3910f9f81031f9fa6ad06c5d6f7c6aeb1fbb3a90 - Completed & Verified (5/5 acceptance matrix suites, 35/35 full backend suites pass; automated multi-pillar coverage across authentication, session revocation, regular-user chat lifecycle, owner administration, and audit event streams).
