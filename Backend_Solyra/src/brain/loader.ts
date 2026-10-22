@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { AstValidationResult } from '@solyra/shared';
-import { evaluateAstProgram, validateBoundedAstProgram } from '../ast/index.js';
+import type { AstExecutionResult, AstNode, AstValidationResult } from '@solyra/shared';
+import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProgram } from '../ast/index.js';
 import { globalBus } from '../neurobus/index.js';
+import { DiskStorageEngine } from '../persistence/disk/disk-storage.js';
 
 export interface BrainRuntimeConstraints {
   maxMemoryBytes?: number;
@@ -46,8 +47,9 @@ export interface BrainLoaderStats {
 export class BrainPackageLoader {
   private activeManifest: BrainPackageManifest | null = null;
   private packageHistory: BrainPackageManifest[] = [];
-  private readonly maxHistoryLength = 20;
+  private maxHistoryLength = 20;
   private currentState: BrainLifecycleState = 'UNLOADED';
+  private readonly diskStorage: DiskStorageEngine;
   private readonly stats = {
     totalLoaded: 0,
     totalFailed: 0,
@@ -57,6 +59,13 @@ export class BrainPackageLoader {
     loadedAt: null as number | null,
     activeModulesCount: 0,
   };
+
+  constructor(options?: { maxHistoryLength?: number }, diskStorage?: DiskStorageEngine) {
+    if (options?.maxHistoryLength && Number.isInteger(options.maxHistoryLength) && options.maxHistoryLength > 0) {
+      this.maxHistoryLength = options.maxHistoryLength;
+    }
+    this.diskStorage = diskStorage ?? new DiskStorageEngine();
+  }
 
   private cloneManifest(manifest: BrainPackageManifest): BrainPackageManifest {
     return JSON.parse(JSON.stringify(manifest)) as BrainPackageManifest;
@@ -419,6 +428,211 @@ export class BrainPackageLoader {
     };
   }
 
+  public getModuleByName(name: string): BrainModuleReference | undefined {
+    if (!this.activeManifest) {
+      return undefined;
+    }
+
+    return this.activeManifest.modules.find((module) => module.name === name);
+  }
+
+  public getModulesByType(type: BrainModuleReference['moduleType']): BrainModuleReference[] {
+    if (!this.activeManifest) {
+      return [];
+    }
+
+    return this.activeManifest.modules.filter((module) => module.moduleType === type);
+  }
+
+  private validateChunkIdentifiers(tenantId: string, brainId: string, version: string, chunkId: string): void {
+    const validIdRegex = /^[a-zA-Z0-9_\-\.]+$/;
+    const identifiers = { tenantId, brainId, version, chunkId };
+
+    for (const [name, value] of Object.entries(identifiers)) {
+      if (typeof value !== 'string' || value.length === 0 || !validIdRegex.test(value)) {
+        globalBus.emit('brain:chunk_error', {
+          tenantId,
+          brainId,
+          version,
+          chunkId,
+          reason: 'invalid_identifier',
+          field: name,
+        });
+        throw new Error('Invalid identifier format');
+      }
+    }
+  }
+
+  public async storeModuleAstChunk(
+    tenantId: string,
+    brainId: string,
+    version: string,
+    chunkId: string,
+    nodes: AstNode[],
+  ): Promise<{ bytesWritten: number; sha256: string }> {
+    this.validateChunkIdentifiers(tenantId, brainId, version, chunkId);
+    return await this.diskStorage.writeRecord<AstNode[]>(tenantId, 'brain-chunks', `${brainId}-${version}-${chunkId}`, nodes);
+  }
+
+  public async loadModuleAstChunk(
+    tenantId: string,
+    brainId: string,
+    version: string,
+    chunkId: string,
+  ): Promise<AstNode[] | null> {
+    this.validateChunkIdentifiers(tenantId, brainId, version, chunkId);
+
+    const chunk = await this.diskStorage.readRecord<AstNode[]>(tenantId, 'brain-chunks', `${brainId}-${version}-${chunkId}`);
+    if (chunk === null) {
+      globalBus.emit('brain:chunk_error', {
+        tenantId,
+        brainId,
+        version,
+        chunkId,
+        reason: 'chunk_not_found',
+      });
+    }
+
+    return chunk;
+  }
+
+  public async deleteModuleAstChunk(
+    tenantId: string,
+    brainId: string,
+    version: string,
+    chunkId: string,
+  ): Promise<boolean> {
+    this.validateChunkIdentifiers(tenantId, brainId, version, chunkId);
+    return await this.diskStorage.deleteRecord(tenantId, 'brain-chunks', `${brainId}-${version}-${chunkId}`);
+  }
+
+  public async executeModuleAstStreaming(
+    moduleId: string,
+    inputPayload: unknown = {},
+    contextOverrides: Record<string, unknown> = {},
+    chunkResolver?: (chunkId: string) => Promise<AstNode[]>,
+  ): Promise<AstExecutionResult> {
+    if (!this.activeManifest) {
+      throw new Error('No active brain package loaded');
+    }
+
+    const packageId = this.activeManifest.brainId;
+    globalBus.emit('brain:streaming_load_initiated', {
+      packageId,
+      moduleId,
+      timestamp: Date.now(),
+    });
+
+    const activeModule = this.getModuleByName(moduleId);
+    if (!activeModule) {
+      throw new Error(`Module '${moduleId}' not found in active package`);
+    }
+
+    const moduleData = activeModule as BrainModuleReference & { payload?: unknown; chunkIds?: string[] };
+    const rawPayload = moduleData.payload;
+    if (rawPayload === undefined || rawPayload === null) {
+      throw new Error(`Module '${moduleId}' does not contain an executable AST`);
+    }
+
+    const timeoutMs = this.activeManifest.runtimeConstraints?.maxExecutionTimeMs ?? 1000;
+    const maxSteps = this.activeManifest.runtimeConstraints?.maxSteps ?? 1000;
+    const executionContext = { ...(typeof inputPayload === 'object' && inputPayload !== null ? inputPayload as Record<string, unknown> : {}), ...contextOverrides };
+
+    try {
+      let program: { version: '1.0'; programId: string; maxDepth: number; body: AstNode[] };
+
+      if (chunkResolver) {
+        const chunkIds = Array.isArray(moduleData.chunkIds) ? moduleData.chunkIds : [`${moduleId}-1`];
+
+        const assembledNodes: AstNode[] = [];
+        for (const chunkId of chunkIds) {
+          const resolvedChunk = await chunkResolver(chunkId);
+          if (Array.isArray(resolvedChunk)) {
+            assembledNodes.push(...resolvedChunk);
+          }
+        }
+
+        program = {
+          version: '1.0',
+          programId: moduleId,
+          maxDepth: this.activeManifest.runtimeConstraints?.boundedAstDepth ?? 10,
+          body: assembledNodes,
+        };
+      } else {
+        program = {
+          version: '1.0',
+          programId: moduleId,
+          maxDepth: this.activeManifest.runtimeConstraints?.boundedAstDepth ?? 10,
+          body: Array.isArray(rawPayload) ? rawPayload as AstNode[] : (rawPayload as Record<string, unknown>).body as AstNode[] ?? [],
+        };
+      }
+
+      const validation = this.extractAndValidateAst(moduleId, program);
+      if (!validation.valid) {
+        const message = validation.errors
+          .map((entry) => typeof entry === 'string' ? entry : entry.message)
+          .join('; ');
+        throw new Error(message || `Module '${moduleId}' does not contain a valid executable AST`);
+      }
+
+      const result = await evaluateStreamingAstProgram(
+        async () => program,
+        executionContext,
+        { timeoutMs, maxSteps },
+      );
+
+      if (!result.success) {
+        globalBus.emit('brain:streaming_execution_failed', {
+          packageId,
+          moduleId,
+          reason: result.error ?? 'streaming_execution_failed',
+          executionTimeMs: result.executionTimeMs ?? 0,
+          stepsExecuted: result.stepsExecuted ?? 0,
+          success: false,
+          timestamp: Date.now(),
+        });
+        return result;
+      }
+
+      globalBus.emit('brain:streaming_execution_completed', {
+        packageId,
+        moduleId,
+        executionTimeMs: result.executionTimeMs ?? 0,
+        stepsExecuted: result.stepsExecuted ?? 0,
+        success: true,
+        timestamp: Date.now(),
+      });
+
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown runtime execution error';
+      globalBus.emit('brain:streaming_execution_failed', {
+        packageId,
+        moduleId,
+        reason: message,
+        executionTimeMs: 0,
+        stepsExecuted: 0,
+        success: false,
+        timestamp: Date.now(),
+      });
+
+      return {
+        success: false,
+        error: message,
+        diagnostic: {
+          path: 'root',
+          code: 'STREAMING_EXECUTION_FAILED',
+          message,
+        },
+        stepsExecuted: 0,
+        events: [],
+        executionTimeMs: 0,
+        durationMs: 0,
+        emittedEvents: [],
+      } satisfies AstExecutionResult;
+    }
+  }
+
   public async executeModuleAst(
     moduleId: string,
     inputPayload: Record<string, unknown> = {},
@@ -575,7 +789,11 @@ export class BrainPackageLoader {
    * @param astProgram - Raw AST object, JSON string, or Buffer containing serialized AST
    * @returns AstValidationResult indicating validity and error details
    */
-  public extractAndValidateAst(moduleName: string, astProgram: unknown): AstValidationResult {
+  public extractAndValidateAst(
+    moduleName: string,
+    astProgram: unknown,
+    options: { isChunk?: boolean } = {},
+  ): AstValidationResult {
     if (!this.activeManifest) {
       throw new Error('Cannot extract and validate AST: No active package loaded');
     }
@@ -626,11 +844,22 @@ export class BrainPackageLoader {
     }
 
     const maxDepth = this.activeManifest.runtimeConstraints?.boundedAstDepth ?? 10;
-    const normalizedAst = (parsedAst && typeof parsedAst === 'object')
-      ? { ...parsedAst, maxDepth }
-      : parsedAst;
+    const candidateAst = options.isChunk
+      ? {
+          version: '1.0' as const,
+          programId: moduleName,
+          maxDepth: 64,
+          body: Array.isArray(parsedAst)
+            ? parsedAst
+            : Array.isArray((parsedAst as Record<string, unknown> | undefined)?.body)
+              ? ((parsedAst as Record<string, unknown>).body as unknown[])
+              : [parsedAst],
+        }
+      : (parsedAst && typeof parsedAst === 'object')
+        ? { ...parsedAst, maxDepth }
+        : parsedAst;
 
-    const result = validateBoundedAstProgram(normalizedAst, { maxDepth });
+    const result = validateBoundedAstProgram(candidateAst, { maxDepth: options.isChunk ? 64 : maxDepth });
 
     if (!result.valid) {
       globalBus.emit('brain:ast_validation_failed', {

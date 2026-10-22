@@ -271,7 +271,7 @@ export interface Conversation {
   updatedAt: Date;
 }
 
-export type MemoryTier = 'working' | 'short_term' | 'long_term' | 'episodic';
+export type MemoryTier = 'working' | 'short_term' | 'long_term' | 'episodic' | 'brain-chunks';
 
 export interface MemoryRecord {
   id: string;
