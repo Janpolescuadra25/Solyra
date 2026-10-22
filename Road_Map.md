@@ -3,20 +3,13 @@
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Memory semantic similarity alignment, fail-closed owner account seeding (`paulescuadra25@gmail.com`), and test harness (completed in commit `27a8aef39173a57a7e7d8554c323b4592525a594`).
-  - [x] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded LRUCache with TTL and NeuroBus telemetry, atomic DiskStorageEngine with two-way SHA-256 verification and path-traversal guards, TieredMemoryRepository with composite cache keys (`${tenantId}:${tier}:${key}`), and comprehensive test suite (completed in commit `99d7a09a79dc34a3ad183c69653415026d1a4ffb`).
   - [ ] **Step 9.3: Streaming Brain Loader & AST Chunking** — Chunked package streaming, lazy AST evaluation from disk via DiskStorageEngine, tiered caching, removing in-memory size ceilings.
   - [ ] **Step 9.4: Storage Substrate Acceptance Matrix** — Multi-gigabyte rule validation, stress benchmarks, and concurrency gates.
 
 ## Future Phases
-- Scalable local/hybrid storage substrates for multi-gigabyte pure code-logic rulebases, memory vectors, and dynamic weights.
 - **Strict Author Immutability:** System identity, foundational self-preservation, safety invariants, and core constitution remain non-overwritable by dynamically loaded packages or runtime adaptation.
 
 ---
-
-## Historical Milestones (Completed & Preserved)
-- [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Implemented `IMemoryRepository.searchBySemanticSimilarity` with PostgreSQL `cosine_similarity`, parameter validation (minSimilarity, limit), fail-closed idempotent owner seeding script (`paulescuadra25@gmail.com`) requiring `OWNER_INITIAL_PASSWORD`, added `"db:seed"` package script, and 39/39 passing test suite (completed in commit `27a8aef39173a57a7e7d8554c323b4592525a594`).
-
 ## ARCHIVED: Completed Historical Milestones
 - [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** - Commit: f4430a51cb63ca8cb7992100b088054e41b634f2 - Completed & Verified (39/39 backend suites pass; semantic search implementation validated, fail-closed owner seed security guard tested, multi-tenant isolation preserved).
 - [x] **Step 8: End-to-End Integration & Security Acceptance Matrix** - Commit: 3910f9f81031f9fa6ad06c5d6f7c6aeb1fbb3a90 - Completed & Verified (5/5 acceptance matrix suites, 35/35 full backend suites pass; automated multi-pillar coverage across authentication, session revocation, regular-user chat lifecycle, owner administration, and audit event streams).
