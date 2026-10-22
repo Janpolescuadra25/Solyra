@@ -1,11 +1,11 @@
-﻿# Solyra Roadmap
+# Solyra Roadmap
 
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
   - [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** — Memory semantic similarity alignment, fail-closed owner account seeding (`paulescuadra25@gmail.com`), and test harness (completed in commit `27a8aef39173a57a7e7d8554c323b4592525a594`).
-  - [ ] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded off-heap cache and disk-backed tiered storage for high-volume AST rulebases (IN PROGRESS).
-  - [ ] **Step 9.3: Streaming Brain Loader & AST Chunking** — Lazy evaluation and chunked package streaming to remove in-memory ceilings.
+  - [x] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded LRUCache with TTL and NeuroBus telemetry, atomic DiskStorageEngine with two-way SHA-256 verification and path-traversal guards, TieredMemoryRepository with composite cache keys (`${tenantId}:${tier}:${key}`), and comprehensive test suite (completed in commit `99d7a09a79dc34a3ad183c69653415026d1a4ffb`).
+  - [ ] **Step 9.3: Streaming Brain Loader & AST Chunking** — Chunked package streaming, lazy AST evaluation from disk via DiskStorageEngine, tiered caching, removing in-memory size ceilings.
   - [ ] **Step 9.4: Storage Substrate Acceptance Matrix** — Multi-gigabyte rule validation, stress benchmarks, and concurrency gates.
 
 ## Future Phases
