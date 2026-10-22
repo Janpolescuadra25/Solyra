@@ -1,10 +1,18 @@
-# Solyra Roadmap
+﻿# Solyra Roadmap
 
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [x] **Step 9.3: Streaming Brain Loader & AST Chunking** — Completed & Verified (53/53 backend tests pass; streaming AST evaluation with cooperative event-loop yielding, chunked package storage/retrieval via DiskStorageEngine, tiered caching, and multi-tenant isolation preserved). Commit: `dd542878cf0ae3271cabbfeb2d3081368ae0f1a2`
-  - [ ] **Step 9.4: Storage Substrate Acceptance Matrix** — Multi-gigabyte rule validation, stress benchmarks, and concurrency gates.
+  - [ ] **Step 9.4: Storage Substrate Acceptance Matrix**
+    - **Component Verification**: Unit and subsystem validation for chunk streaming, LRU entry management, and disk storage engine primitives.
+    - **Production Path Integration**: Verify that TieredMemoryRepository is actively wired into live application request paths and endpoints, replacing unintegrated mock or bypass paths.
+    - **Measurable Scalability & Memory Budgets**: Establish explicit benchmark contracts (dataset sizes up to multi-gigabytes, concurrency levels, p95/p99 latency limits, and fixed resident memory budgets for process RSS and heap).
+    - **Progressive Disk Scaling under Fixed RAM**: Test progressively larger disk-backed datasets under an identical bounded working-memory ceiling to ensure memory usage does not scale linearly with dataset size.
+    - **True On-Demand Streaming**: Verify that large/chunked brain packages execute chunk-by-chunk with immediate memory release; assembling all chunks in memory prior to evaluation fails the bounded-RAM criteria.
+    - **Storage Consistency & Failure Semantics**: Validate primary-store-first write consistency, atomic file replacements, concurrent write conflict handling, crash/restart recovery, and detection/rejection of oversized or corrupted chunks.
+    - **Multi-Tenant Isolation at Scale**: Strict verification that cross-tenant read/write attempts fail closed under high concurrent load.
+    - **Operational Runbook & Scope Governance**: Provide runbook for disk maintenance, cache sizing, and diagnostics; if acceptance gaps reveal unbuilt capabilities, record scoped remediation tasks rather than declaring scalability complete.
+    - **Preserved Risk Register**: Acknowledge that historical milestone archival does not waive unresolved defects in account lifecycle, persistent database migration, truthful package operations, or real-browser validation.
 
 ## Future Phases
 - **Strict Author Immutability:** System identity, foundational self-preservation, safety invariants, and core constitution remain non-overwritable by dynamically loaded packages or runtime adaptation.
