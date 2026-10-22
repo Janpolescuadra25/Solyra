@@ -3,7 +3,7 @@
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [ ] **Step 9.3: Streaming Brain Loader & AST Chunking** — Chunked package streaming, lazy AST evaluation from disk via DiskStorageEngine, tiered caching, removing in-memory size ceilings.
+  - [x] **Step 9.3: Streaming Brain Loader & AST Chunking** — Completed & Verified (53/53 backend tests pass; streaming AST evaluation with cooperative event-loop yielding, chunked package storage/retrieval via DiskStorageEngine, tiered caching, and multi-tenant isolation preserved). Commit: `dd542878cf0ae3271cabbfeb2d3081368ae0f1a2`
   - [ ] **Step 9.4: Storage Substrate Acceptance Matrix** — Multi-gigabyte rule validation, stress benchmarks, and concurrency gates.
 
 ## Future Phases
@@ -34,5 +34,4 @@
 - [x] **Step 4: Frontend Application Foundation & Routing** â€” Implemented React Router v6, TailwindCSS v3, 3-tier auth context, route guards, unified Axios API client, and reverse proxy configuration in `@solyra/frontend` (completed in commit `1d5151bd6caa752cbbb43ee45e55994a893aa4a4`).
 - [x] **Step 5: User Authentication & Resumable Onboarding UI** â€” Implemented responsive login, signup, email verification, password reset, 3-tier auth context with profile hydration, top-header shell layout, and resumable 3-step onboarding wizard in `@solyra/frontend` (completed in commit `3a730c04a1ca5309372d6558429766c580b32156`).
 - [x] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded LRUCache with TTL and NeuroBus telemetry, atomic DiskStorageEngine with two-way SHA-256 verification and path-traversal guards, TieredMemoryRepository with composite cache keys (`${tenantId}:${tier}:${key}`), and comprehensive test suite (completed in commit `99d7a09a79dc34a3ad183c69653415026d1a4ffb`).
-
-
+- [x] **Step 9.3: Streaming Brain Loader & AST Chunking** — Completed & Verified (53/53 backend tests pass; streaming AST evaluation with cooperative event-loop yielding, chunked package storage/retrieval via DiskStorageEngine, tiered caching, and multi-tenant isolation preserved). Commit: `dd542878cf0ae3271cabbfeb2d3081368ae0f1a2`
