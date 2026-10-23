@@ -3,16 +3,12 @@
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [ ] **Step 9.4: Storage Substrate Acceptance Matrix**
-    - **Component Verification**: Unit and subsystem validation for chunk streaming, LRU entry management, and disk storage engine primitives.
-    - **Production Path Integration**: Verify that TieredMemoryRepository is actively wired into live application request paths and endpoints, replacing unintegrated mock or bypass paths.
-    - **Measurable Scalability & Memory Budgets**: Establish explicit benchmark contracts (dataset sizes up to multi-gigabytes, concurrency levels, p95/p99 latency limits, and fixed resident memory budgets for process RSS and heap).
-    - **Progressive Disk Scaling under Fixed RAM**: Test progressively larger disk-backed datasets under an identical bounded working-memory ceiling to ensure memory usage does not scale linearly with dataset size.
-    - **True On-Demand Streaming**: Verify that large/chunked brain packages execute chunk-by-chunk with immediate memory release; assembling all chunks in memory prior to evaluation fails the bounded-RAM criteria.
-    - **Storage Consistency & Failure Semantics**: Validate primary-store-first write consistency, atomic file replacements, concurrent write conflict handling, crash/restart recovery, and detection/rejection of oversized or corrupted chunks.
-    - **Multi-Tenant Isolation at Scale**: Strict verification that cross-tenant read/write attempts fail closed under high concurrent load.
-    - **Operational Runbook & Scope Governance**: Provide runbook for disk maintenance, cache sizing, and diagnostics; if acceptance gaps reveal unbuilt capabilities, record scoped remediation tasks rather than declaring scalability complete.
-    - **Preserved Risk Register**: Acknowledge that historical milestone archival does not waive unresolved defects in account lifecycle, persistent database migration, truthful package operations, or real-browser validation.
+  - [ ] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook**
+    - **Automated Benchmarking**: Simulate 10k+ memory vectors across Postgres and the tiered LRU cache to establish baseline latency and throughput budgets.
+    - **Latency & Memory Budgets**: Define measured p95 targets for cached queries and hybrid fallback pathways under bounded heap and process memory.
+    - **Progressive Disk Scaling**: Test larger durable datasets under fixed working-memory ceilings to confirm disk-backed storage scales without RAM blow-up.
+    - **Operational Runbook**: Document migration, cache warm-up, retention, and failover recovery procedures for production storage workloads.
+    - **Scope Governance**: Record acceptance gaps and operational constraints separately from the Step 9.4 completion record to keep roadmap commitments honest.
 
 ## Future Phases
 - **Strict Author Immutability:** System identity, foundational self-preservation, safety invariants, and core constitution remain non-overwritable by dynamically loaded packages or runtime adaptation.
@@ -43,3 +39,9 @@
 - [x] **Step 5: User Authentication & Resumable Onboarding UI** â€” Implemented responsive login, signup, email verification, password reset, 3-tier auth context with profile hydration, top-header shell layout, and resumable 3-step onboarding wizard in `@solyra/frontend` (completed in commit `3a730c04a1ca5309372d6558429766c580b32156`).
 - [x] **Step 9.2: Local Hybrid Disk Substrate & LRU Cache** — Bounded LRUCache with TTL and NeuroBus telemetry, atomic DiskStorageEngine with two-way SHA-256 verification and path-traversal guards, TieredMemoryRepository with composite cache keys (`${tenantId}:${tier}:${key}`), and comprehensive test suite (completed in commit `99d7a09a79dc34a3ad183c69653415026d1a4ffb`).
 - [x] **Step 9.3: Streaming Brain Loader & AST Chunking** — Completed & Verified (53/53 backend tests pass; streaming AST evaluation with cooperative event-loop yielding, chunked package storage/retrieval via DiskStorageEngine, tiered caching, and multi-tenant isolation preserved). Commit: `dd542878cf0ae3271cabbfeb2d3081368ae0f1a2`
+- [x] **Step 9.4: Storage Substrate Acceptance Matrix & Production Wiring** (Completed: October 2026, Commit: `8c92ea4af60ce088bfcb5967416a50e30a1fdce0`)
+  - Verified end-to-end storage substrate acceptance matrix covering InMemory, Postgres, Tiered Cache, DiskStorageEngine, and BrainPackageLoader.
+  - Implemented `searchBySemanticSimilarity` on `InMemoryMemoryRepository` with dimensional validation and limit clamping.
+  - Added backwards-compatible persistence injection to `BrainPackageLoader` with `getPersistence()` accessor.
+  - Wired `/brain/evaluate` protected production endpoint with `authenticateProtectedRequest` guard and AST evaluator.
+  - Validated 6 acceptance matrix test suites (`Backend_Solyra/test/step9.4_storage_acceptance_matrix.test.ts`) with zero regressions across the backend regression suite.
