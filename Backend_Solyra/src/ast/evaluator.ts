@@ -386,7 +386,7 @@ export function evaluateAstProgram(
 }
 
 export async function evaluateStreamingAstProgram(
-  programLoader: () => Promise<BoundedAstProgram> | BoundedAstProgram,
+  programLoader: (() => Promise<BoundedAstProgram> | BoundedAstProgram) | BoundedAstProgram,
   initialContext: Record<string, unknown> = {},
   options: EvaluatorOptions = {},
 ): Promise<AstExecutionResult> {
@@ -394,6 +394,16 @@ export async function evaluateStreamingAstProgram(
   const maxSteps = options.maxSteps ?? 1000;
   const timeoutMs = options.timeoutMs ?? 1000;
   const emittedEvents: Array<{ eventName: string; payload: unknown }> = [];
+
+  const resolveProgram = async (): Promise<BoundedAstProgram> => {
+    const candidate = typeof programLoader === 'function' ? await programLoader() : programLoader;
+    if (!candidate || typeof candidate !== 'object' || !Array.isArray((candidate as unknown as Record<string, unknown>).body)) {
+      throw new AstRuntimeError('INVALID_PROGRAM', 'Streaming evaluation requires a valid BoundedAstProgram or loader function', {
+        receivedType: typeof candidate,
+      });
+    }
+    return candidate as BoundedAstProgram;
+  };
 
   const scope: Record<string, unknown> = Object.create(null);
   for (const [key, value] of Object.entries(initialContext)) {
@@ -446,6 +456,8 @@ export async function evaluateStreamingAstProgram(
 
     return lastValue;
   }
+
+  const program = await resolveProgram();
 
   async function evaluateNode(node: AstNode, path = 'root'): Promise<unknown> {
     executionState.path = path;
@@ -639,7 +651,6 @@ export async function evaluateStreamingAstProgram(
   }
 
   try {
-    const program = await programLoader();
     let finalResult: unknown = undefined;
     for (let index = 0; index < program.body.length; index += 1) {
       const evaluated = await evaluateNode(program.body[index], `body[${index}]`);

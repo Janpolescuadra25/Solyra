@@ -7,7 +7,9 @@ import { globalHomeostasis } from './homeostasis/index.js';
 import { globalThalamus } from './thalamus/index.js';
 import { globalCouncil } from './council/index.js';
 import { globalBrainLoader } from './brain/index.js';
-import { evaluateAstProgram, validateBoundedAstProgram } from './ast/index.js';
+import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProgram } from './ast/index.js';
+import { LRUCache } from './persistence/cache/lru-cache.js';
+import { TieredMemoryRepository } from './persistence/cache/tiered-memory.repository.js';
 import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './persistence/postgres/index.js';
 import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
 import { AuthService } from './auth/service.js';
@@ -16,6 +18,9 @@ import { authenticateRequest, RateLimiter } from './auth/middleware.js';
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
 const postgresBundle = createPostgresPersistence(getPgPool());
+const tieredMemoryRepo = postgresBundle
+  ? new TieredMemoryRepository({ primaryRepository: postgresBundle.memory, cache: new LRUCache() })
+  : undefined;
 const authService = new AuthService(postgresBundle, getPgPool());
 const authRateLimiter = new RateLimiter(15 * 60 * 1000, 10);
 const loginRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
@@ -983,6 +988,47 @@ const server = http.createServer(async (req, res) => {
     }
 
     sendJsonResponse(res, 200, { success: true, bundle: result.bundle });
+    return;
+  }
+
+  if (req.method === 'POST' && requestPath === '/brain/evaluate') {
+    if (!authenticateProtectedRequest(req)) {
+      sendJsonResponse(res, 401, { error: 'Unauthorized' });
+      return;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!body || typeof body !== 'object' || !('program' in body) || !body.program) {
+        sendJsonResponse(res, 400, { error: 'Missing program in request body' });
+        return;
+      }
+
+      const parsedBody = body as { program: unknown; streaming?: boolean };
+      const validation = validateBoundedAstProgram(parsedBody.program as any);
+      if (!validation.valid) {
+        sendJsonResponse(res, 400, { error: 'Invalid AST program', details: validation.errors });
+        return;
+      }
+
+      if (parsedBody.streaming) {
+        const result = await evaluateStreamingAstProgram(() => parsedBody.program as any);
+        if (!result.success) {
+          sendJsonResponse(res, 422, { success: false, error: result.error ?? 'AST stream evaluation failed', diagnostic: result.diagnostic });
+          return;
+        }
+        sendJsonResponse(res, 200, { success: true, streaming: true, result: result.result });
+      } else {
+        const result = await evaluateAstProgram(parsedBody.program as any);
+        if (!result.success) {
+          sendJsonResponse(res, 422, { success: false, error: result.error ?? 'AST evaluation failed', diagnostic: result.diagnostic });
+          return;
+        }
+        sendJsonResponse(res, 200, { success: true, streaming: false, result: result.result });
+      }
+    } catch (err: any) {
+      sendJsonResponse(res, 500, { error: 'Evaluation failed', message: err?.message || String(err) });
+    }
     return;
   }
 

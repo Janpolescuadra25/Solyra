@@ -3,6 +3,7 @@ import type { AstExecutionResult, AstNode, AstValidationResult } from '@solyra/s
 import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProgram } from '../ast/index.js';
 import { globalBus } from '../neurobus/index.js';
 import { DiskStorageEngine } from '../persistence/disk/disk-storage.js';
+import type { IMemoryRepository } from '../persistence/postgres/repositories/memory.repository.js';
 
 export interface BrainRuntimeConstraints {
   maxMemoryBytes?: number;
@@ -50,6 +51,7 @@ export class BrainPackageLoader {
   private maxHistoryLength = 20;
   private currentState: BrainLifecycleState = 'UNLOADED';
   private readonly diskStorage: DiskStorageEngine;
+  private readonly persistence?: IMemoryRepository;
   private readonly stats = {
     totalLoaded: 0,
     totalFailed: 0,
@@ -60,11 +62,20 @@ export class BrainPackageLoader {
     activeModulesCount: 0,
   };
 
-  constructor(options?: { maxHistoryLength?: number }, diskStorage?: DiskStorageEngine) {
+  constructor(
+    options?: { maxHistoryLength?: number },
+    diskStorage?: DiskStorageEngine,
+    persistence?: IMemoryRepository,
+  ) {
     if (options?.maxHistoryLength && Number.isInteger(options.maxHistoryLength) && options.maxHistoryLength > 0) {
       this.maxHistoryLength = options.maxHistoryLength;
     }
     this.diskStorage = diskStorage ?? new DiskStorageEngine();
+    this.persistence = persistence;
+  }
+
+  public getPersistence(): IMemoryRepository | undefined {
+    return this.persistence;
   }
 
   private cloneManifest(manifest: BrainPackageManifest): BrainPackageManifest {

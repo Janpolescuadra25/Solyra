@@ -1,6 +1,8 @@
 import { Pool } from 'pg';
 import type { MemoryRecord, MemoryTier, RepositoryResult } from '@solyra/shared';
 
+export type { MemoryRecord, MemoryTier, RepositoryResult } from '@solyra/shared';
+
 export interface IMemoryRepository {
   store(record: MemoryRecord): Promise<RepositoryResult<void>>;
   retrieve(tenantId: string, tier: MemoryTier, key: string): Promise<RepositoryResult<MemoryRecord | null>>;
