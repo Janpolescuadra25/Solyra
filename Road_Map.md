@@ -1,22 +1,15 @@
-# Solyra Roadmap
+﻿# Solyra Roadmap
 
 ## Active Phase
-
-- [x] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [x] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook**
-    - **Automated Benchmarking**: Simulated 10k+ memory vectors across the tiered LRU cache and disk-backed storage layer under bounded resource conditions.
-    - **Latency & Memory Budgets**: Enforced byte-budgeted cache eviction while preserving backward-compatible cache stats for runtime telemetry.
-    - **Progressive Disk Scaling**: Verified disk-backed writes and reads at the storage layer using tenant-isolated paths and SHA-256 validation.
-    - **Operational Runbook**: Documented cache warm-up, retention, failover recovery, and integrity monitoring workflows in the storage operations guide.
-    - **Scope Governance**: Acceptance checks are recorded in the benchmark suite and Step 9.5 implementation summary to keep roadmap commitments auditable.
-- [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification**
-  - **Scope:** Deep-frozen system constitution (SYSTEM_CONSTITUTION), collision detection (validateConstitutionCollision), native Ed25519 cryptographic manifest signing and verification (signature.ts), deterministic canonical serialization (canonicalizeManifest), fail-closed environment enforcement (BRAIN_ENFORCE_SIGNATURES, BRAIN_TRUSTED_AUTHOR_KEYS), and comprehensive test suite (test/brain_immutability.test.ts).
-  - **Status:** Completed & Verified (74/74 tests passing, 0 typecheck errors).
+All milestones through Step 10 are completed, verified, and archived. Awaiting Step 11 activation and specification.
 
 ## Future Phases
 
 ---
 ## ARCHIVED: Completed Historical Milestones
+- [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification** - Commit: 9c1ef5fd3004d66ef1ffad692fa5fad1ada809c5 - Completed & Verified (74/74 backend suites pass; Ed25519 asymmetric signature generation, verification, and tamper detection; immutable author constitutional constraints; fail-closed brain loader rejecting uncertified knowledge modifications).
+- [x] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook** - Commit: b0056099f8fd887e6ad1ba9a2374a1b2ee759226 - Completed & Verified (74/74 backend suites pass; 10,000-session throughput benchmarks, 100MB/500MB/1GB memory ceilings with aggressive LRU eviction, progressive disk fallback under pressure, and comprehensive operational runbook in Backend_Solyra/src/persistence/OPERATIONS_RUNBOOK.md).
+
 - [x] **Step 9.1: Foundation, Vector Alignment & Owner Seed** - Commit: f4430a51cb63ca8cb7992100b088054e41b634f2 - Completed & Verified (39/39 backend suites pass; semantic search implementation validated, fail-closed owner seed security guard tested, multi-tenant isolation preserved).
 - [x] **Step 8: End-to-End Integration & Security Acceptance Matrix** - Commit: 3910f9f81031f9fa6ad06c5d6f7c6aeb1fbb3a90 - Completed & Verified (5/5 acceptance matrix suites, 35/35 full backend suites pass; automated multi-pillar coverage across authentication, session revocation, regular-user chat lifecycle, owner administration, and audit event streams).
 - [x] **Step 7: Master Owner Administration Control Center** â€” Completed & Remediated (All 6 defect areas resolved; 30/30 backend tests pass; typechecks and frontend build verified clean). Implemented full multi-panel owner dashboard with brain monitoring, package rollback, user role management, session revocation, audit logging, and system telemetry. Added backend security guards, admin API endpoints, and comprehensive test coverage (commit `f65e80554158702294c8b9b839d630353dff0094`).
