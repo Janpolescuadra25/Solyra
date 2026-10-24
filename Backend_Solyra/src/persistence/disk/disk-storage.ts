@@ -7,6 +7,7 @@ import { globalBus } from '../../neurobus/neurobus.js';
 export interface DiskStorageOptions {
   baseDir?: string;
   maxFileSizeBytes?: number;
+  maxFileBytes?: number;
 }
 
 export interface DiskStorageEnvelope<T = unknown> {
@@ -25,8 +26,9 @@ export class DiskStorageEngine {
 
   constructor(options: DiskStorageOptions = {}) {
     this.baseDir = options.baseDir ?? process.env.SOLYRA_STORAGE_DIR ?? path.join(process.cwd(), '.solyra-storage');
-    this.maxFileSizeBytes = options.maxFileSizeBytes && options.maxFileSizeBytes > 0
-      ? options.maxFileSizeBytes
+    const configuredLimit = options.maxFileBytes ?? options.maxFileSizeBytes;
+    this.maxFileSizeBytes = configuredLimit && configuredLimit > 0
+      ? configuredLimit
       : 10 * 1024 * 1024;
   }
 
@@ -138,6 +140,21 @@ export class DiskStorageEngine {
     try {
       await fs.unlink(targetPath);
       globalBus.emit('storage:disk_deleted', { tenantId, tier, key });
+      return true;
+    } catch (error: unknown) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError && nodeError.code === 'ENOENT') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  public async exists(tenantId: string, tier: string, key: string): Promise<boolean> {
+    const targetPath = this.getFilePath(tenantId, tier, key);
+
+    try {
+      await fs.access(targetPath);
       return true;
     } catch (error: unknown) {
       const nodeError = error as NodeJS.ErrnoException;

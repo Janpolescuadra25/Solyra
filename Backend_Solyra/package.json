@@ -10,6 +10,8 @@
     "dev": "tsx watch src/index.ts",
     "test": "tsx --test test/*.test.ts",
     "test:step8": "tsx --test test/step8_acceptance_matrix.test.ts",
+    "benchmark:step9.5": "tsx --test test/step9.5_scalability_benchmark.test.ts",
+    "test:step9.5": "tsx --test test/step9.5_scalability_benchmark.test.ts",
     "db:seed": "tsx src/persistence/postgres/seed.ts",
     "test:brainstem": "tsx ./test/brainstem.verify.ts",
     "test:persistence": "tsx ./test/persistence.verify.ts",

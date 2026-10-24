@@ -11,7 +11,7 @@ import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProg
 import { LRUCache } from './persistence/cache/lru-cache.js';
 import { TieredMemoryRepository } from './persistence/cache/tiered-memory.repository.js';
 import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './persistence/postgres/index.js';
-import type { HealthStatus, ReadinessStatus } from '@solyra/shared';
+import type { HealthStatus, MemoryRecord, ReadinessStatus } from '@solyra/shared';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, RateLimiter } from './auth/middleware.js';
 
@@ -19,7 +19,7 @@ const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
 const postgresBundle = createPostgresPersistence(getPgPool());
 const tieredMemoryRepo = postgresBundle
-  ? new TieredMemoryRepository({ primaryRepository: postgresBundle.memory, cache: new LRUCache() })
+  ? new TieredMemoryRepository({ primaryRepository: postgresBundle.memory, cache: new LRUCache<string, MemoryRecord>() })
   : undefined;
 const authService = new AuthService(postgresBundle, getPgPool());
 const authRateLimiter = new RateLimiter(15 * 60 * 1000, 10);

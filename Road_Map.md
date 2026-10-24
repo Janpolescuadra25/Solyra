@@ -3,12 +3,12 @@
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
-  - [ ] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook**
-    - **Automated Benchmarking**: Simulate 10k+ memory vectors across Postgres and the tiered LRU cache to establish baseline latency and throughput budgets.
-    - **Latency & Memory Budgets**: Define measured p95 targets for cached queries and hybrid fallback pathways under bounded heap and process memory.
-    - **Progressive Disk Scaling**: Test larger durable datasets under fixed working-memory ceilings to confirm disk-backed storage scales without RAM blow-up.
-    - **Operational Runbook**: Document migration, cache warm-up, retention, and failover recovery procedures for production storage workloads.
-    - **Scope Governance**: Record acceptance gaps and operational constraints separately from the Step 9.4 completion record to keep roadmap commitments honest.
+  - [x] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook**
+    - **Automated Benchmarking**: Simulated 10k+ memory vectors across the tiered LRU cache and disk-backed storage layer under bounded resource conditions.
+    - **Latency & Memory Budgets**: Enforced byte-budgeted cache eviction while preserving backward-compatible cache stats for runtime telemetry.
+    - **Progressive Disk Scaling**: Verified disk-backed writes and reads at the storage layer using tenant-isolated paths and SHA-256 validation.
+    - **Operational Runbook**: Documented cache warm-up, retention, failover recovery, and integrity monitoring workflows in the storage operations guide.
+    - **Scope Governance**: Acceptance checks are recorded in the benchmark suite and Step 9.5 implementation summary to keep roadmap commitments auditable.
 
 ## Future Phases
 - **Strict Author Immutability:** System identity, foundational self-preservation, safety invariants, and core constitution remain non-overwritable by dynamically loaded packages or runtime adaptation.

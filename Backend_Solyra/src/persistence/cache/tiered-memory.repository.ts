@@ -6,31 +6,40 @@ import type { IMemoryRepository } from '../postgres/repositories/memory.reposito
 import { LRUCache } from './lru-cache.js';
 
 export interface TieredMemoryRepositoryOptions {
-  primaryRepository: IMemoryRepository;
-  cache: LRUCache<string, MemoryRecord>;
+  cache?: LRUCache<any, MemoryRecord>;
   disk?: DiskStorageEngine;
 }
 
 export class TieredMemoryRepository implements IMemoryRepository {
   private readonly primaryRepository: IMemoryRepository;
-  private readonly cache: LRUCache<string, MemoryRecord>;
+  private readonly cache: LRUCache<any, MemoryRecord>;
   private readonly disk?: DiskStorageEngine;
 
+  constructor(primaryRepository: IMemoryRepository, options?: TieredMemoryRepositoryOptions);
+  constructor(primaryRepository: IMemoryRepository | { primaryRepository: IMemoryRepository; cache?: LRUCache<any, MemoryRecord>; disk?: DiskStorageEngine }, options?: TieredMemoryRepositoryOptions | LRUCache<any, MemoryRecord>, disk?: DiskStorageEngine);
   constructor(
-    primaryRepositoryOrOptions: IMemoryRepository | TieredMemoryRepositoryOptions,
-    cache?: LRUCache<string, MemoryRecord>,
+    primaryRepositoryOrOptions: IMemoryRepository | { primaryRepository: IMemoryRepository; cache?: LRUCache<any, MemoryRecord>; disk?: DiskStorageEngine },
+    options?: TieredMemoryRepositoryOptions | LRUCache<any, MemoryRecord>,
     disk?: DiskStorageEngine,
   ) {
     if (primaryRepositoryOrOptions && typeof primaryRepositoryOrOptions === 'object' && 'primaryRepository' in primaryRepositoryOrOptions) {
-      const options = primaryRepositoryOrOptions as TieredMemoryRepositoryOptions;
-      this.primaryRepository = options.primaryRepository;
-      this.cache = options.cache;
-      this.disk = options.disk;
+      const legacyOptions = primaryRepositoryOrOptions;
+      this.primaryRepository = legacyOptions.primaryRepository;
+      this.cache = legacyOptions.cache ?? new LRUCache<string, MemoryRecord>({ maxEntries: 1000 });
+      this.disk = legacyOptions.disk;
       return;
     }
 
     this.primaryRepository = primaryRepositoryOrOptions as IMemoryRepository;
-    this.cache = cache ?? new LRUCache<string, MemoryRecord>({ maxEntries: 1000 });
+    if (options && typeof options === 'object' && 'cache' in options) {
+      this.cache = (options as TieredMemoryRepositoryOptions).cache ?? new LRUCache<string, MemoryRecord>({ maxEntries: 1000 });
+      this.disk = (options as TieredMemoryRepositoryOptions).disk ?? disk;
+      return;
+    }
+
+    this.cache = options instanceof LRUCache
+      ? options
+      : new LRUCache<string, MemoryRecord>({ maxEntries: 1000 });
     this.disk = disk;
   }
 
@@ -61,7 +70,7 @@ export class TieredMemoryRepository implements IMemoryRepository {
       }
     }
 
-    return { success: true, data: (result.data ?? record) as never };
+    return { success: true };
   }
 
   public async retrieve(tenantId: string, tier: MemoryTier, key: string): Promise<RepositoryResult<MemoryRecord | null>> {
@@ -69,11 +78,7 @@ export class TieredMemoryRepository implements IMemoryRepository {
     const cached = this.cache.get(cacheKey);
 
     if (cached) {
-      if (cached.tenantId !== tenantId) {
-        this.cache.delete(cacheKey);
-      } else {
-        return { success: true, data: cached };
-      }
+      return { success: true, data: cached };
     }
 
     const primaryResult = await this.primaryRepository.retrieve(tenantId, tier, key);
@@ -132,9 +137,7 @@ export class TieredMemoryRepository implements IMemoryRepository {
 
     if (result.success && Array.isArray(result.data)) {
       for (const record of result.data) {
-        if (record.tenantId === tenantId) {
-          this.cache.set(this.makeCacheKey(record.tenantId, record.tier, record.key), record);
-        }
+        this.cache.set(this.makeCacheKey(record.tenantId, record.tier, record.key), record);
       }
     }
 
@@ -151,9 +154,7 @@ export class TieredMemoryRepository implements IMemoryRepository {
 
     if (result.success && Array.isArray(result.data)) {
       for (const record of result.data) {
-        if (record.tenantId === tenantId) {
-          this.cache.set(this.makeCacheKey(record.tenantId, record.tier, record.key), record);
-        }
+        this.cache.set(this.makeCacheKey(record.tenantId, record.tier, record.key), record);
       }
     }
 
