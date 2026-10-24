@@ -2,19 +2,18 @@
 
 ## Active Phase
 
-- [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
+- [x] **Step 9: Scalable Local/Hybrid Storage Substrates**
   - [x] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook**
-- [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification**
-  - **Scope:** Deep-frozen system constitution (SYSTEM_CONSTITUTION), collision detection (alidateConstitutionCollision), native Ed25519 cryptographic manifest signing and verification (signature.ts), deterministic canonical serialization (canonicalizeManifest), fail-closed environment enforcement (BRAIN_ENFORCE_SIGNATURES, BRAIN_TRUSTED_AUTHOR_KEYS), and comprehensive test suite (	est/brain_immutability.test.ts).
-  - **Status:** Completed & Verified (74/74 tests passing, 0 typecheck errors).
     - **Automated Benchmarking**: Simulated 10k+ memory vectors across the tiered LRU cache and disk-backed storage layer under bounded resource conditions.
     - **Latency & Memory Budgets**: Enforced byte-budgeted cache eviction while preserving backward-compatible cache stats for runtime telemetry.
     - **Progressive Disk Scaling**: Verified disk-backed writes and reads at the storage layer using tenant-isolated paths and SHA-256 validation.
     - **Operational Runbook**: Documented cache warm-up, retention, failover recovery, and integrity monitoring workflows in the storage operations guide.
     - **Scope Governance**: Acceptance checks are recorded in the benchmark suite and Step 9.5 implementation summary to keep roadmap commitments auditable.
+- [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification**
+  - **Scope:** Deep-frozen system constitution (SYSTEM_CONSTITUTION), collision detection (validateConstitutionCollision), native Ed25519 cryptographic manifest signing and verification (signature.ts), deterministic canonical serialization (canonicalizeManifest), fail-closed environment enforcement (BRAIN_ENFORCE_SIGNATURES, BRAIN_TRUSTED_AUTHOR_KEYS), and comprehensive test suite (test/brain_immutability.test.ts).
+  - **Status:** Completed & Verified (74/74 tests passing, 0 typecheck errors).
 
 ## Future Phases
-- **Strict Author Immutability:** System identity, foundational self-preservation, safety invariants, and core constitution remain non-overwritable by dynamically loaded packages or runtime adaptation.
 
 ---
 ## ARCHIVED: Completed Historical Milestones
