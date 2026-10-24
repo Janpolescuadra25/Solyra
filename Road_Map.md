@@ -1,9 +1,12 @@
-﻿# Solyra Roadmap
+# Solyra Roadmap
 
 ## Active Phase
 
 - [ ] **Step 9: Scalable Local/Hybrid Storage Substrates**
   - [x] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook**
+- [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification**
+  - **Scope:** Deep-frozen system constitution (SYSTEM_CONSTITUTION), collision detection (alidateConstitutionCollision), native Ed25519 cryptographic manifest signing and verification (signature.ts), deterministic canonical serialization (canonicalizeManifest), fail-closed environment enforcement (BRAIN_ENFORCE_SIGNATURES, BRAIN_TRUSTED_AUTHOR_KEYS), and comprehensive test suite (	est/brain_immutability.test.ts).
+  - **Status:** Completed & Verified (74/74 tests passing, 0 typecheck errors).
     - **Automated Benchmarking**: Simulated 10k+ memory vectors across the tiered LRU cache and disk-backed storage layer under bounded resource conditions.
     - **Latency & Memory Budgets**: Enforced byte-budgeted cache eviction while preserving backward-compatible cache stats for runtime telemetry.
     - **Progressive Disk Scaling**: Verified disk-backed writes and reads at the storage layer using tenant-isolated paths and SHA-256 validation.

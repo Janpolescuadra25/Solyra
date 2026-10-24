@@ -348,3 +348,58 @@ Published whenever the runtime aborts due to a step limit or timeout violation. 
 **Completed Step 3:** standardized runtime constraints, fail-closed sandbox enforcement, and authenticated execution endpoint workflow.
 
 The package loader and backend runtime now enforce both structural and execution-level constraints before trust is granted to any loaded brain module.
+
+## Step 10 — Strict Author Immutability & Brain Package Signature Verification
+
+Step 10 hardens the Brain subsystem against dynamic package impersonation, unsafe identity overrides, and unsigned or tampered package activation.
+
+### Core constitution and invariant model
+
+`SYSTEM_CONSTITUTION` is defined in `src/brain/constitution.ts` and is deeply frozen at runtime. It captures the root system identity (`solyra-core-system`) and the three critical invariants:
+
+- `INV-001`: Kernel Identity Immutability
+- `INV-002`: Author Trust Boundary
+- `INV-003`: Core State Preservation
+
+The immutable constitution prevents packages from claiming the system identity without explicit system authority and blocks attempts to override protected executive scopes.
+
+### Canonical signing and verification
+
+`src/brain/signature.ts` implements a deterministic, key-order-safe canonicalization routine (`canonicalizeManifest`) that excludes the `authorSignature` field while preserving numeric timestamps and sorted module ordering. This canonical payload is signed with native Node.js Ed25519 via `signPackageManifest()` and validated with `verifyPackageSignature()`.
+
+The verification path accepts either raw 64-character hex public keys or SPKI PEM keys, performs a trusted-key whitelist check when configured, and rejects tampered or mismatched payloads before the package is accepted.
+
+### Loader enforcement pipeline
+
+`BrainPackageLoader.loadPackage()` now applies the fail-closed security sequence:
+
+1. validate manifest structure;
+2. validate constitution collision/invariant protection;
+3. enforce the signature gate when `BRAIN_ENFORCE_SIGNATURES=true` or `authorSignature` is present;
+4. emit `brain:invariant_violation_rejected` or `brain:signature_verification_failed` on `globalBus` when a package is rejected.
+
+This preserves backward compatibility for unsigned packages when enforcement is disabled while remaining strict when signatures are required.
+
+### Environment configuration
+
+The runtime configuration block in `.env.example` now includes:
+
+```env
+BRAIN_ENFORCE_SIGNATURES=false
+BRAIN_TRUSTED_AUTHOR_KEYS=
+```
+
+When `BRAIN_ENFORCE_SIGNATURES=true`, the trusted author key list must be populated or the package load fails closed.
+
+### Verification expectations
+
+The Step 10 acceptance criteria are enforced through the native Node.js test runner and assert library. The required checks cover:
+
+- constitution immutability and root-identity protection;
+- canonicalization determinism across key ordering;
+- valid Ed25519 signing and verification;
+- payload tamper detection;
+- untrusted author rejection;
+- the fail-closed loader behavior for enabled signatures and constitution violations.
+
+This is the final system boundary for Brain package trust: a package may only enter execution if it remains structurally valid, constitutionally safe, and cryptographically author-verified when required.

@@ -14,3 +14,5 @@ export function createBrainPackageLoader(
 }
 
 export * from './loader.js';
+export * from './constitution.js';
+export * from './signature.js';

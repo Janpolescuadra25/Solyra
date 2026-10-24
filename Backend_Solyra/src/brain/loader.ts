@@ -4,6 +4,8 @@ import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProg
 import { globalBus } from '../neurobus/index.js';
 import { DiskStorageEngine } from '../persistence/disk/disk-storage.js';
 import type { IMemoryRepository } from '../persistence/postgres/repositories/memory.repository.js';
+import { validateConstitutionCollision } from './constitution.js';
+import { verifyPackageSignature } from './signature.js';
 
 export interface BrainRuntimeConstraints {
   maxMemoryBytes?: number;
@@ -23,12 +25,14 @@ export interface BrainModuleReference {
 }
 
 export interface BrainPackageManifest {
-  schemaVersion: '1.0';
+  schemaVersion: '1.0' | string;
   brainId: string;
   version: string;
   authorSignature?: string;
+  authorPublicKey?: string;
+  isSystemPackage?: boolean;
   createdAt: number;
-  runtimeConstraints: BrainRuntimeConstraints;
+  runtimeConstraints: Record<string, any>;
   modules: BrainModuleReference[];
 }
 
@@ -116,11 +120,10 @@ export class BrainPackageLoader {
 
     if (typeof pkg.version !== 'string' || pkg.version.trim().length === 0) {
       errors.push('version must be a non-empty string');
-    } else {
-      const semver = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
-      if (!semver.test(pkg.version) && pkg.version.trim().length > 0) {
-        // Accept non-empty versions that are not strictly semver to stay compatible with runtime manifests.
-      }
+    }
+
+    if (typeof pkg.createdAt !== 'number' || Number.isNaN(pkg.createdAt)) {
+      errors.push('createdAt must be a valid number');
     }
 
     const runtimeConstraints = pkg.runtimeConstraints;
@@ -180,6 +183,22 @@ export class BrainPackageLoader {
       }
     }
 
+    if (pkg.authorPublicKey !== undefined) {
+      if (typeof pkg.authorPublicKey !== 'string' || pkg.authorPublicKey.trim().length === 0) {
+        errors.push('authorPublicKey must be a non-empty string when provided');
+      }
+    }
+
+    if (pkg.authorSignature !== undefined) {
+      if (typeof pkg.authorSignature !== 'string' || pkg.authorSignature.trim().length === 0) {
+        errors.push('authorSignature must be a non-empty string when provided');
+      }
+    }
+
+    if (pkg.isSystemPackage !== undefined && typeof pkg.isSystemPackage !== 'boolean') {
+      errors.push('isSystemPackage must be a boolean when provided');
+    }
+
     return {
       valid: errors.length === 0,
       errors,
@@ -204,6 +223,41 @@ export class BrainPackageLoader {
         timestamp: Date.now(),
       });
       return false;
+    }
+
+    const collisionCheck = validateConstitutionCollision(manifest);
+    if (!collisionCheck.allowed) {
+      globalBus.emit('brain:invariant_violation_rejected', {
+        brainId: manifest.brainId,
+        violation: collisionCheck.violation,
+        timestamp: Date.now(),
+      });
+      throw new Error(`Constitution collision rejected: ${collisionCheck.violation}`);
+    }
+
+    const enforceSignatures = process.env.BRAIN_ENFORCE_SIGNATURES === 'true';
+    const hasSignature = Boolean(manifest.authorSignature);
+    if (enforceSignatures || hasSignature) {
+      const trustedKeysEnv = process.env.BRAIN_TRUSTED_AUTHOR_KEYS ?? '';
+      const trustedKeys = trustedKeysEnv
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+      if (enforceSignatures && trustedKeys.length === 0) {
+        throw new Error('BRAIN_ENFORCE_SIGNATURES is enabled but BRAIN_TRUSTED_AUTHOR_KEYS is empty or not configured');
+      }
+
+      const verification = verifyPackageSignature(manifest, trustedKeys);
+      if (!verification.valid) {
+        globalBus.emit('brain:signature_verification_failed', {
+          brainId: manifest.brainId,
+          authorPublicKey: manifest.authorPublicKey,
+          reason: verification.reason,
+          timestamp: Date.now(),
+        });
+        throw new Error(`Package signature verification failed: ${verification.reason}`);
+      }
     }
 
     if (this.activeManifest) {
