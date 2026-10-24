@@ -9,7 +9,9 @@ export const CouncilMemberRole = {
   CHA: 'CHA',     // Web research, documentation, and external grounding
   REX: 'REX',     // Permissions, security boundaries, and execution restrictions
   VAL: 'VAL',     // Independent correctness checks, candidate evaluation, and regression detection
-  LIA: 'LIA'      // Request fulfillment, answer organization, and clear communication
+  LIA: 'LIA',     // Request fulfillment, answer organization, and clear communication
+  ORACLE: 'ORACLE', // Governance and high-complexity policy deliberation
+  ARCHITECT: 'ARCHITECT' // Architecture synthesis and system design validation
 } as const;
 
 export type CouncilMemberRoleType = typeof CouncilMemberRole[keyof typeof CouncilMemberRole];

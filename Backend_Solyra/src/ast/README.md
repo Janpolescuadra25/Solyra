@@ -68,3 +68,11 @@ Transforms conversational natural language user prompts into validated `BoundedA
 2. **Schema Invariant Enforcement:** Produces bounded ASTs constrained by `maxDepth: 5`, version `1.0`, non-empty `body`, and fail-closed structural validation.
 3. **Event Emission & Return Output:** Emits `chat.reasoning` events on the runtime event bus and returns structured response literals evaluated by `evaluateAstProgram()`.
 4. **Verification:** Validated by `Backend_Solyra/test/chat-ast-integration.test.ts` (100% passing across 75 test suites).
+
+## Step 12: Multi-Turn Memory Context, Streaming AST Execution & Council Orchestration
+- **Status:** `ACTIVE`
+- **Scope:** Multi-turn context injection, live SSE streaming for AST execution, council-driven governance routing, and frontend stream lifecycle cleanup.
+- **Compiler behavior:** `compileChatPromptToAst()` accepts both legacy `string[]` history and structured turn objects (`{ role, content }`) while normalizing them into `historyTurns` payload metadata.
+- **Streaming execution:** `GET /api/chat/conversations/:id/stream` invokes `evaluateStreamingAstProgram()` with `AbortController` cancellation, SSE `data:` chunks, and conversation ownership enforcement.
+- **Council governance:** High-complexity prompts route through `CouncilEngine.createDeliberationProposal(..., CouncilMemberRole.ORACLE)` with a 5-minute per-user cooldown and sanitized prompt text before submission.
+- **Frontend resilience:** `subscribeToChatStream()` uses exponential backoff reconnects and `useEffect` cleanup to avoid stale open streams on conversation changes or unmount.

@@ -12,7 +12,8 @@ import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProg
 import { LRUCache } from './persistence/cache/lru-cache.js';
 import { TieredMemoryRepository } from './persistence/cache/tiered-memory.repository.js';
 import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './persistence/postgres/index.js';
-import { ArousalLevel, SystemPriority, type HealthStatus, type MemoryRecord, type ReadinessStatus } from '@solyra/shared';
+import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, type MemoryRecord, type ReadinessStatus } from '@solyra/shared';
+import { CouncilEngine } from './council/engine.js';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, RateLimiter } from './auth/middleware.js';
 
@@ -29,6 +30,9 @@ const loginRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
 const forgotPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 3);
 const resetPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
 const chatRateLimiter = new RateLimiter(60 * 1000, 120);
+const councilEngine = new CouncilEngine();
+const userLastCouncilProposalTime = new Map<string, number>();
+const COUNCIL_PROPOSAL_COOLDOWN_MS = 5 * 60 * 1000;
 const adminRateLimits = new Map<string, { count: number; resetAt: number }>();
 let drainTimer: NodeJS.Timeout | null = null;
 let astStats = {
@@ -401,6 +405,100 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    if (req.method === 'GET' && pathParts.length === 5 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations' && pathParts[4] === 'stream') {
+      const conversationId = pathParts[3];
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const conversation = await postgresBundle.chat.getConversation(conversationId);
+        if (!conversation) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.workspaceId !== req.session.workspaceId || conversation.userId !== req.session.userId) {
+          sendJsonResponse(res, 403, { success: false, error: 'Forbidden: access denied' });
+          return;
+        }
+
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+        });
+        res.write(`data: ${JSON.stringify({ type: 'handshake', conversationId })}\n\n`);
+
+        const abortController = new AbortController();
+        req.on('close', () => {
+          abortController.abort();
+          res.end();
+        });
+
+        let previousMessages: any[] = [];
+        try {
+          const msgs = await postgresBundle.chat.getMessages(conversationId);
+          if (Array.isArray(msgs)) {
+            previousMessages = msgs;
+          }
+        } catch {
+          previousMessages = [];
+        }
+
+        const lastUserMsg = [...previousMessages].reverse().find((message: any) => message?.role === 'user');
+        const promptText = typeof lastUserMsg?.content === 'string' && lastUserMsg.content.trim() ? lastUserMsg.content.trim() : 'Hello';
+        const historyTurns: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = previousMessages.slice(-10).map((message: any) => ({
+          role: message?.role === 'assistant' ? 'assistant' : message?.role === 'system' ? 'system' : 'user',
+          content: typeof message?.content === 'string' ? message.content : '',
+        }));
+
+        const astProgram = compileChatPromptToAst(promptText, {
+          conversationId,
+          userId: req.session.userId,
+          workspaceId: req.session.workspaceId,
+          history: historyTurns,
+        });
+
+        await evaluateStreamingAstProgram(
+          astProgram,
+          {
+            userId: req.session.userId,
+            conversationId,
+            workspaceId: req.session.workspaceId,
+          },
+          {
+            maxSteps: 1000,
+            timeoutMs: 30000,
+            onEmitEvent: (eventName, payload) => {
+              if (!abortController.signal.aborted && !res.writableEnded) {
+                res.write(`data: ${JSON.stringify({ type: 'ast_event', eventName, payload })}\n\n`);
+              }
+            },
+          },
+        );
+
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ type: 'complete', conversationId })}\n\n`);
+          res.end();
+        }
+        return;
+      } catch (streamError) {
+        const message = streamError instanceof Error ? streamError.message : 'Streaming failed';
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ type: 'error', message })}\n\n`);
+          res.end();
+        }
+        return;
+      }
+    }
+
     if (req.method === 'POST' && pathParts.length === 5 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations' && pathParts[4] === 'messages') {
       const conversationId = pathParts[3];
       const authenticated = await authenticateRequest(req, res, postgresBundle);
@@ -454,10 +552,53 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
+        let previousMessages: any[] = [];
+        try {
+          const msgs = await postgresBundle.chat.getMessages(conversationId);
+          if (Array.isArray(msgs)) {
+            previousMessages = msgs;
+          }
+        } catch (err) {
+          console.warn('[Chat] Failed to retrieve history messages, falling back to empty context:', err);
+          previousMessages = [];
+        }
+
+        const historyTurns: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = previousMessages.slice(-10).map((message: any) => ({
+          role: message?.role === 'assistant' ? 'assistant' : message?.role === 'system' ? 'system' : 'user',
+          content: typeof message?.content === 'string' ? message.content : '',
+        }));
+
         const astProgram = compileChatPromptToAst(trimmedContent, {
           conversationId,
           userId: req.session.userId,
+          workspaceId: req.session.workspaceId,
+          history: historyTurns,
         });
+
+        const isCouncilTrigger = /\b(propose|council|governance|deliberate|consensus)\b/i.test(trimmedContent);
+        let councilProposalId: string | null = null;
+        if (isCouncilTrigger) {
+          const now = Date.now();
+          const lastTime = userLastCouncilProposalTime.get(req.session.userId) ?? 0;
+          if (now - lastTime >= COUNCIL_PROPOSAL_COOLDOWN_MS) {
+            try {
+              const sanitizedPrompt = trimmedContent.replace(/[<>]/g, '').trim();
+              const proposalId = randomUUID();
+              councilEngine.createDeliberationProposal(
+                proposalId,
+                `Chat Query: ${sanitizedPrompt.substring(0, 40)}`,
+                sanitizedPrompt.substring(0, 500),
+                CouncilMemberRole.ORACLE,
+              );
+              councilProposalId = proposalId;
+              userLastCouncilProposalTime.set(req.session.userId, now);
+            } catch (councilError) {
+              console.error('[Chat] Council deliberation creation failed:', councilError);
+            }
+          } else {
+            console.info(`[Chat] Council proposal rate-limited for user ${req.session.userId}`);
+          }
+        }
 
         const execResult = evaluateAstProgram(astProgram, {
           user: { id: req.session.userId, username: req.user.sub || req.session.userId },
@@ -504,6 +645,7 @@ const server = http.createServer(async (req, res) => {
             stepsExecuted: execResult.stepsExecuted,
             executionTimeMs: execResult.executionTimeMs,
             success: execResult.success,
+            councilProposalId,
             timestamp: new Date().toISOString(),
           },
           createdAt: new Date(),
@@ -513,6 +655,7 @@ const server = http.createServer(async (req, res) => {
           success: true,
           userMessage,
           assistantMessage,
+          councilProposalId,
           execution: {
             programId: astProgram.programId,
             stepsExecuted: execResult.stepsExecuted,

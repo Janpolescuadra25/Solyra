@@ -20,13 +20,15 @@ const unsubscribeConcluded = bus.subscribe('council:deliberation:concluded', ((p
 }) as any);
 
 try {
-  // 1. Verify 7 registered members
+  // 1. Verify 9 registered members
   const members = engine.getMembers();
-  assert.strictEqual(members.length, 7, 'Council must register exactly 7 members');
+  assert.strictEqual(members.length, 9, 'Council must register exactly 9 members');
   assert.ok(members.includes(CouncilMemberRole.REX), 'REX must be registered');
   assert.ok(members.includes(CouncilMemberRole.VAL), 'VAL must be registered');
   assert.ok(members.includes(CouncilMemberRole.LIA), 'LIA must be registered');
-  console.log('✓ 7 Council members registered correctly');
+  assert.ok(members.includes(CouncilMemberRole.ORACLE), 'ORACLE must be registered');
+  assert.ok(members.includes(CouncilMemberRole.ARCHITECT), 'ARCHITECT must be registered');
+  console.log('✓ 9 Council members registered correctly');
 
   // 2. Proposal creation and majority approval
   const p1 = engine.createDeliberationProposal(

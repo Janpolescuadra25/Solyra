@@ -7,6 +7,7 @@ import {
   fetchConversations,
   fetchMessages,
   sendMessage,
+  subscribeToChatStream,
   type ChatMessage as ChatApiMessage,
   type ConversationSummary,
 } from '../api/client';
@@ -234,6 +235,7 @@ export const ChatWorkspacePage: React.FC = () => {
   const [messages, setMessages] = useState<ChatApiMessage[]>([]);
   const [inputText, setInputText] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('solyra-default');
@@ -293,6 +295,30 @@ export const ChatWorkspacePage: React.FC = () => {
   useEffect(() => {
     endOfThreadRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating]);
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      return;
+    }
+
+    const unsubscribe = subscribeToChatStream(
+      activeConversationId,
+      (event) => {
+        if (event?.type === 'ast_event') {
+          setIsStreaming(true);
+        } else if (event?.type === 'complete' || event?.type === 'error') {
+          setIsStreaming(false);
+        }
+      },
+      () => {
+        setIsStreaming(false);
+      },
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeConversationId]);
 
   const createNewConversation = async (titleOverride?: string): Promise<ConversationSummary | null> => {
     try {
@@ -543,12 +569,12 @@ export const ChatWorkspacePage: React.FC = () => {
                 );
               })}
 
-              {isGenerating && (
+              {(isGenerating || isStreaming) && (
                 <div className="flex justify-start">
                   <div className="rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-xs text-slate-300">
                     <div className="flex items-center gap-2">
                       <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-                      Solyra is generating a response...
+                      {isStreaming ? 'Solyra is streaming the response...' : 'Solyra is generating a response...'}
                     </div>
                   </div>
                 </div>
@@ -571,13 +597,13 @@ export const ChatWorkspacePage: React.FC = () => {
                 }
               }}
               rows={2}
-              disabled={isGenerating}
+              disabled={isGenerating || isStreaming}
               placeholder="Type your message... (Press Enter to send, Shift+Enter for newline)"
               className="min-h-[52px] flex-1 resize-none rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-emerald-600 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
             />
             <button
               type="submit"
-              disabled={!inputText.trim() || isGenerating}
+              disabled={!inputText.trim() || isGenerating || isStreaming}
               className="rounded-xl bg-emerald-600 px-5 py-3 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Send

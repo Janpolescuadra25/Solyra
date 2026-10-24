@@ -75,6 +75,61 @@ export async function sendMessage(conversationId: string, content: string): Prom
   return response.data ?? {};
 }
 
+export function subscribeToChatStream(
+  conversationId: string,
+  onEvent: (data: any) => void,
+  onError?: (err: any) => void,
+): () => void {
+  let isClosed = false;
+  let retryCount = 0;
+  let eventSource: EventSource | null = null;
+  const maxRetries = 3;
+
+  function connect() {
+    if (isClosed) {
+      return;
+    }
+
+    const url = `/api/chat/conversations/${encodeURIComponent(conversationId)}/stream`;
+    eventSource = new EventSource(url, { withCredentials: true });
+
+    eventSource.onmessage = (event) => {
+      retryCount = 0;
+      try {
+        const parsed = JSON.parse(event.data);
+        onEvent(parsed);
+      } catch {
+        onEvent({ type: 'raw', data: event.data });
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      if (isClosed) {
+        return;
+      }
+
+      eventSource?.close();
+      if (retryCount < maxRetries) {
+        const timeout = Math.pow(2, retryCount) * 1000;
+        retryCount += 1;
+        setTimeout(connect, timeout);
+      } else {
+        onError?.(err);
+      }
+    };
+  }
+
+  connect();
+
+  return () => {
+    isClosed = true;
+    if (eventSource) {
+      eventSource.close();
+      eventSource = null;
+    }
+  };
+}
+
 client.interceptors.request.use((config) => {
   const token = sessionStorage.getItem('token');
   if (token && config.headers) {

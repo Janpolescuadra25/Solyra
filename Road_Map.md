@@ -1,7 +1,12 @@
 # Solyra Roadmap
 
 ## Active Phase
-All milestones through Step 11 are completed, verified, and archived. Awaiting Step 12 activation and specification.
+- [ ] **Step 12: Multi-Turn Memory Context, Streaming AST Execution & Council Orchestration**
+  - Multi-turn conversation context retrieval via `postgresBundle.chat.getMessages() ?? []` fed into `compileChatPromptToAst()`, preserving backward compatibility for string arrays and turn objects.
+  - Real-time Server-Sent Events (SSE) streaming endpoint `GET /api/chat/conversations/:id/stream` running `evaluateStreamingAstProgram()` with `AbortController` cleanup and CORS alignment.
+  - High-complexity / governance query routing to `councilEngine.createDeliberationProposal(id, title, desc, CouncilMemberRole.ORACLE)` with 5-minute per-user rate limiting, input sanitization, and error logging.
+  - Resilient frontend stream subscription in `client.ts` with exponential backoff and `ChatWorkspacePage` unmount lifecycle cleanup.
+  - End-to-end integration test suite and AST subsystem documentation updates.
 
 ## Future Phases
 
