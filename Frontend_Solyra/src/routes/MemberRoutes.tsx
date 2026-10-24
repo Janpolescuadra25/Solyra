@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { Conversation, ChatMessage } from '@solyra/shared';
 import { useAuth } from '../context/AuthContext';
-import { client } from '../api/client';
+import {
+  client,
+  createConversation,
+  fetchConversations,
+  fetchMessages,
+  sendMessage,
+  type ChatMessage as ChatApiMessage,
+  type ConversationSummary,
+} from '../api/client';
 import { CheckCircle2, ArrowRight, UserCheck, Settings } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -222,9 +229,9 @@ export const SettingsPage: React.FC = () => {
 
 export const ChatWorkspacePage: React.FC = () => {
   const { user } = useAuth();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatApiMessage[]>([]);
   const [inputText, setInputText] = useState<string>('');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
@@ -247,17 +254,14 @@ export const ChatWorkspacePage: React.FC = () => {
   const loadConversations = useCallback(async () => {
     try {
       setError(null);
-      const response = await client.get('/api/chat/conversations');
-      if (response.data?.success) {
-        const nextConversations: Conversation[] = Array.isArray(response.data.conversations) ? response.data.conversations : [];
-        setConversations(nextConversations);
-        setActiveConversationId((current) => {
-          if (current && nextConversations.some((conversation) => conversation.id === current)) {
-            return current;
-          }
-          return nextConversations[0]?.id ?? null;
-        });
-      }
+      const nextConversations = await fetchConversations();
+      setConversations(nextConversations);
+      setActiveConversationId((current) => {
+        if (current && nextConversations.some((conversation) => conversation.id === current)) {
+          return current;
+        }
+        return nextConversations[0]?.id ?? null;
+      });
     } catch (caught) {
       setError(getErrorMessage(caught));
     }
@@ -276,11 +280,8 @@ export const ChatWorkspacePage: React.FC = () => {
     const loadMessages = async () => {
       try {
         setError(null);
-        const response = await client.get(`/api/chat/conversations/${activeConversationId}/messages`);
-        if (response.data?.success) {
-          const nextMessages: ChatMessage[] = Array.isArray(response.data.messages) ? response.data.messages : [];
-          setMessages(nextMessages);
-        }
+        const nextMessages = await fetchMessages(activeConversationId);
+        setMessages(nextMessages);
       } catch (caught) {
         setError(getErrorMessage(caught));
       }
@@ -293,20 +294,19 @@ export const ChatWorkspacePage: React.FC = () => {
     endOfThreadRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isGenerating]);
 
-  const createNewConversation = async (titleOverride?: string): Promise<Conversation | null> => {
+  const createNewConversation = async (titleOverride?: string): Promise<ConversationSummary | null> => {
     try {
       setError(null);
-      const response = await client.post('/api/chat/conversations', {
-        title: titleOverride && titleOverride.trim() ? titleOverride.trim() : 'New Conversation',
-        modelIdentifier: selectedModel,
-      });
+      const createdConversation = await createConversation(
+        titleOverride && titleOverride.trim() ? titleOverride.trim() : 'New Conversation',
+        selectedModel,
+      );
 
-      if (response.data?.success && response.data.conversation) {
-        const createdConversation: Conversation = response.data.conversation;
-        setConversations((current) => [createdConversation, ...current]);
+      if (createdConversation) {
+        setConversations((current) => [createdConversation as ConversationSummary, ...current]);
         setActiveConversationId(createdConversation.id);
         setMessages([]);
-        return createdConversation;
+        return createdConversation as ConversationSummary;
       }
 
       return null;
@@ -358,13 +358,13 @@ export const ChatWorkspacePage: React.FC = () => {
       return;
     }
 
-    const localMessage: ChatMessage = {
+    const localMessage: ChatApiMessage = {
       id: `local-${Date.now()}`,
       conversationId,
       senderId: user?.id ?? 'local-user',
       role: 'user',
       content: trimmedInput,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
     };
 
     setInputText('');
@@ -373,12 +373,10 @@ export const ChatWorkspacePage: React.FC = () => {
     setMessages((current) => [...current, localMessage]);
 
     try {
-      const response = await client.post(`/api/chat/conversations/${conversationId}/messages`, {
-        content: trimmedInput,
-      });
+      const response = await sendMessage(conversationId, trimmedInput);
 
-      if (response.data?.success) {
-        const serverMessages: ChatMessage[] = Array.isArray(response.data.messages) ? response.data.messages : [];
+      if (response.success) {
+        const serverMessages: ChatApiMessage[] = Array.isArray(response.messages) ? response.messages as ChatApiMessage[] : [];
         setMessages((current) => current.filter((message) => message.id !== localMessage.id).concat(serverMessages));
       }
     } catch (caught) {
@@ -512,6 +510,11 @@ export const ChatWorkspacePage: React.FC = () => {
             <div className="space-y-4">
               {messages.map((message) => {
                 const isUser = message.role === 'user';
+                const metadata = message.metadata as Record<string, unknown> | undefined;
+                const programId = typeof metadata?.programId === 'string' ? metadata.programId : undefined;
+                const stepsExecuted = typeof metadata?.stepsExecuted === 'number' ? metadata.stepsExecuted : undefined;
+                const executionTimeMs = typeof metadata?.executionTimeMs === 'number' ? metadata.executionTimeMs : undefined;
+
                 return (
                   <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
                     <div
@@ -527,6 +530,14 @@ export const ChatWorkspacePage: React.FC = () => {
                         <span>{new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                       <div className="whitespace-pre-wrap">{message.content}</div>
+
+                      {!isUser && (programId || stepsExecuted !== undefined || executionTimeMs !== undefined) && (
+                        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-700/60 pt-2 text-[10px] uppercase tracking-[0.12em] text-emerald-200/80">
+                          {programId && <span>Program: {programId}</span>}
+                          {stepsExecuted !== undefined && <span>{stepsExecuted} steps</span>}
+                          {executionTimeMs !== undefined && <span>{executionTimeMs} ms</span>}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );

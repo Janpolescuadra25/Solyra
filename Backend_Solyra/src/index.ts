@@ -7,16 +7,18 @@ import { globalHomeostasis } from './homeostasis/index.js';
 import { globalThalamus } from './thalamus/index.js';
 import { globalCouncil } from './council/index.js';
 import { globalBrainLoader } from './brain/index.js';
+import { compileChatPromptToAst } from './ast/chat-compiler.js';
 import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProgram } from './ast/index.js';
 import { LRUCache } from './persistence/cache/lru-cache.js';
 import { TieredMemoryRepository } from './persistence/cache/tiered-memory.repository.js';
 import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './persistence/postgres/index.js';
-import type { HealthStatus, MemoryRecord, ReadinessStatus } from '@solyra/shared';
+import { ArousalLevel, SystemPriority, type HealthStatus, type MemoryRecord, type ReadinessStatus } from '@solyra/shared';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, RateLimiter } from './auth/middleware.js';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
+globalThalamus.registerRoute('chat.*', SystemPriority.USER, ArousalLevel.ALERT);
 const postgresBundle = createPostgresPersistence(getPgPool());
 const tieredMemoryRepo = postgresBundle
   ? new TieredMemoryRepository({ primaryRepository: postgresBundle.memory, cache: new LRUCache<string, MemoryRecord>() })
@@ -433,22 +435,77 @@ const server = http.createServer(async (req, res) => {
         }
 
         const trimmedContent = body.content.trim();
+        const routeDecision = globalThalamus.routeInput({
+          channel: 'chat.user',
+          source: 'member-client',
+          payload: {
+            conversationId,
+            userId: req.session.userId,
+            contentLength: trimmedContent.length,
+          },
+        });
+
+        if (!routeDecision.decision.accepted) {
+          sendJsonResponse(res, 429, {
+            success: false,
+            error: 'Thalamus rejected the chat input',
+            reason: routeDecision.decision.reason ?? 'Route suppressed',
+          });
+          return;
+        }
+
+        const astProgram = compileChatPromptToAst(trimmedContent, {
+          conversationId,
+          userId: req.session.userId,
+        });
+
+        const execResult = evaluateAstProgram(astProgram, {
+          user: { id: req.session.userId, username: req.user.sub || req.session.userId },
+          timestamp: Date.now(),
+        });
+
+        if (!execResult.success) {
+          sendJsonResponse(res, 400, {
+            success: false,
+            error: 'AST evaluation failed',
+            details: execResult.error ?? 'Evaluation failed',
+            diagnostic: execResult.diagnostic,
+          });
+          return;
+        }
+
+        const rawReplyText = typeof execResult.result === 'string'
+          ? execResult.result
+          : `SOL Brain: Evaluation completed with structured result for "${trimmedContent}".`;
+
+        const assistantReplyText = rawReplyText.startsWith('Solyra Assistant:')
+          ? rawReplyText
+          : `Solyra Assistant: ${rawReplyText}`;
+
         const userMessage = await postgresBundle.chat.appendMessage({
           id: randomUUID(),
           conversationId,
           senderId: req.session.userId,
           role: 'user',
           content: trimmedContent,
+          metadata: { source: 'member-client', timestamp: new Date().toISOString() },
           createdAt: new Date(),
         });
 
-        const assistantReplyText = `Solyra Assistant: I received your request: "${trimmedContent}". Conversational engine is active and ready for collaborative tasks.`;
         const assistantMessage = await postgresBundle.chat.appendMessage({
           id: randomUUID(),
           conversationId,
           senderId: 'solyra-assistant',
           role: 'assistant',
           content: assistantReplyText,
+          metadata: {
+            source: 'solyra-ast-brain',
+            programId: astProgram.programId,
+            stepsExecuted: execResult.stepsExecuted,
+            executionTimeMs: execResult.executionTimeMs,
+            success: execResult.success,
+            timestamp: new Date().toISOString(),
+          },
           createdAt: new Date(),
         });
 
@@ -456,6 +513,12 @@ const server = http.createServer(async (req, res) => {
           success: true,
           userMessage,
           assistantMessage,
+          execution: {
+            programId: astProgram.programId,
+            stepsExecuted: execResult.stepsExecuted,
+            executionTimeMs: execResult.executionTimeMs,
+            success: execResult.success,
+          },
           messages: [userMessage, assistantMessage],
         });
         return;
