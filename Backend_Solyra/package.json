@@ -14,7 +14,8 @@
     "test:brainstem": "tsx ./test/brainstem.verify.ts",
     "test:persistence": "tsx ./test/persistence.verify.ts",
     "test:integration:pg": "tsx test/postgres.verify.ts",
-    "test:postgres": "tsx ./src/persistence/postgres/postgres.verify.ts"
+    "test:postgres": "tsx ./src/persistence/postgres/postgres.verify.ts",
+    "test:step9.4": "tsx --test test/step9.4_storage_acceptance_matrix.test.ts"
   },
   "dependencies": {
     "@solyra/shared": "workspace:*",
