@@ -1,11 +1,12 @@
-﻿# Solyra Roadmap
+# Solyra Roadmap
 
 ## Active Phase
-All milestones through Step 10 are completed, verified, and archived. Awaiting Step 11 activation and specification.
+All milestones through Step 11 are completed, verified, and archived. Awaiting Step 12 activation and specification.
 
 ## Future Phases
 
 ---
+- [x] **Step 11: AST Chat Pipeline Integration & Chat-to-AST Compiler** - Commit: 32a7a306a9f28b15e78d9f0d83db69ad9eb67339 - Completed & Verified (75/75 backend suites pass; deterministic prompt-to-AST compilation via `compileChatPromptToAst()`, sensory input routing via `globalThalamus.routeInput('chat.*')`, live execution via `evaluateAstProgram()`, conversational history persistence with execution telemetry, and end-to-end frontend integration in `MemberRoutes.tsx`).
 ## ARCHIVED: Completed Historical Milestones
 - [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification** - Commit: 9c1ef5fd3004d66ef1ffad692fa5fad1ada809c5 - Completed & Verified (74/74 backend suites pass; Ed25519 asymmetric signature generation, verification, and tamper detection; immutable author constitutional constraints; fail-closed brain loader rejecting uncertified knowledge modifications).
 - [x] **Step 9.5: Scalability Benchmarking, Progressive Disk Scaling & Operational Runbook** - Commit: b0056099f8fd887e6ad1ba9a2374a1b2ee759226 - Completed & Verified (74/74 backend suites pass; 10,000-session throughput benchmarks, 100MB/500MB/1GB memory ceilings with aggressive LRU eviction, progressive disk fallback under pressure, and comprehensive operational runbook in Backend_Solyra/src/persistence/OPERATIONS_RUNBOOK.md).
@@ -40,3 +41,4 @@ All milestones through Step 10 are completed, verified, and archived. Awaiting S
   - Added backwards-compatible persistence injection to `BrainPackageLoader` with `getPersistence()` accessor.
   - Wired `/brain/evaluate` protected production endpoint with `authenticateProtectedRequest` guard and AST evaluator.
   - Validated 6 acceptance matrix test suites (`Backend_Solyra/test/step9.4_storage_acceptance_matrix.test.ts`) with zero regressions across the backend regression suite.
+

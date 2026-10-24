@@ -51,3 +51,20 @@ The shared author-feedback contract lives in `Shared_Sol/src/ast.ts` and is cons
   - `Backend_Solyra/test/ast_validator.test.ts`
   - `Backend_Solyra/test/ast_evaluator.test.ts`
 - Regression coverage includes path-based runtime diagnostics for division-by-zero and step-budget exhaustion.
+
+
+---
+
+## Phase 11 / Step 11: AST Chat Pipeline & Compiler
+- **Status:** `DONE` (Completed: October 2026, Commit: `32a7a306a9f28b15e78d9f0d83db69ad9eb67339`)
+- **Core Module:** `Backend_Solyra/src/ast/chat-compiler.ts`
+- **Exports:** `compileChatPromptToAst(prompt: string, context?: ChatCompilerContext): BoundedAstProgram`
+
+### Overview
+Transforms conversational natural language user prompts into validated `BoundedAstProgram` instances adhering to `@solyra/shared` AST contracts. Enables real cognitive rule execution, sensory gating, and execution telemetry in the SOL brain runtime.
+
+### Key Capabilities & Architecture
+1. **Deterministic Intent Classification:** Classifies incoming prompts into bounded execution paths (`greeting`, `system_status`, `identity`, `arithmetic_query`, `general_query`, `empty_input`).
+2. **Schema Invariant Enforcement:** Produces bounded ASTs constrained by `maxDepth: 5`, version `1.0`, non-empty `body`, and fail-closed structural validation.
+3. **Event Emission & Return Output:** Emits `chat.reasoning` events on the runtime event bus and returns structured response literals evaluated by `evaluateAstProgram()`.
+4. **Verification:** Validated by `Backend_Solyra/test/chat-ast-integration.test.ts` (100% passing across 75 test suites).
