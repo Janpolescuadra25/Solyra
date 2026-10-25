@@ -6,10 +6,18 @@ export class InMemoryChatRepository implements IChatRepository {
   private readonly messages = new Map<string, ChatMessage[]>();
 
   async createConversation(conversation: Conversation): Promise<Conversation> {
-    const clone: Conversation = structuredClone(conversation);
-    this.conversations.set(clone.id, clone);
-    this.messages.set(clone.id, []);
-    return structuredClone(clone);
+    const session: Conversation = {
+      ...conversation,
+      archiveState: conversation.archiveState ?? 'active',
+      retentionExpiresAt: conversation.retentionExpiresAt ? new Date(conversation.retentionExpiresAt) : undefined,
+      deletedAt: conversation.deletedAt ? new Date(conversation.deletedAt) : undefined,
+      createdAt: new Date(conversation.createdAt),
+      updatedAt: new Date(conversation.updatedAt),
+    };
+
+    this.conversations.set(session.id, session);
+    this.messages.set(session.id, []);
+    return structuredClone(session);
   }
 
   async getConversation(id: string): Promise<Conversation | null> {
@@ -17,20 +25,14 @@ export class InMemoryChatRepository implements IChatRepository {
     return conversation ? structuredClone(conversation) : null;
   }
 
-  async listConversations(workspaceId: string, userId?: string): Promise<Conversation[]> {
-    const results: Conversation[] = [];
-
-    for (const conversation of this.conversations.values()) {
-      if (conversation.workspaceId !== workspaceId) {
-        continue;
-      }
-      if (userId && conversation.userId !== userId) {
-        continue;
-      }
-      results.push(structuredClone(conversation));
-    }
-
-    return results.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  async listConversations(workspaceId: string, userId?: string, includeArchived: boolean = false): Promise<Conversation[]> {
+    return Array.from(this.conversations.values())
+      .filter((conversation) => conversation.workspaceId === workspaceId)
+      .filter((conversation) => (userId ? conversation.userId === userId : true))
+      .filter((conversation) => !conversation.deletedAt && conversation.archiveState !== 'deleted')
+      .filter((conversation) => (includeArchived ? true : (conversation.archiveState ?? 'active') === 'active'))
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .map((conversation) => structuredClone(conversation));
   }
 
   async deleteConversation(id: string, workspaceId: string): Promise<boolean> {
@@ -61,6 +63,47 @@ export class InMemoryChatRepository implements IChatRepository {
   async getMessages(conversationId: string): Promise<ChatMessage[]> {
     const list = this.messages.get(conversationId) ?? [];
     return list.map((message) => structuredClone(message));
+  }
+
+  async archiveConversation(id: string, workspaceId: string): Promise<boolean> {
+    const session = this.conversations.get(id);
+    if (!session || session.workspaceId !== workspaceId) return false;
+    if (session.deletedAt || (session.archiveState ?? 'active') !== 'active') return false;
+
+    session.archiveState = 'archived';
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  async restoreConversation(id: string, workspaceId: string): Promise<boolean> {
+    const session = this.conversations.get(id);
+    if (!session || session.workspaceId !== workspaceId) return false;
+    if (session.deletedAt || (session.archiveState ?? 'active') !== 'archived') return false;
+
+    session.archiveState = 'active';
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  async softDeleteConversation(id: string, workspaceId: string): Promise<boolean> {
+    const session = this.conversations.get(id);
+    if (!session || session.workspaceId !== workspaceId) return false;
+    if (session.deletedAt || (session.archiveState ?? 'active') === 'deleted') return false;
+
+    session.archiveState = 'deleted';
+    session.deletedAt = new Date();
+    session.updatedAt = new Date();
+    return true;
+  }
+
+  async setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date): Promise<boolean> {
+    const session = this.conversations.get(id);
+    if (!session || session.workspaceId !== workspaceId) return false;
+    if (session.deletedAt || (session.archiveState ?? 'active') === 'deleted') return false;
+
+    session.retentionExpiresAt = new Date(expiresAt);
+    session.updatedAt = new Date();
+    return true;
   }
 
   clear(): void {

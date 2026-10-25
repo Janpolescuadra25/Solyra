@@ -1,13 +1,17 @@
 import { Pool } from 'pg';
-import type { ChatMessage, Conversation } from '@solyra/shared';
+import type { ArchiveState, ChatMessage, Conversation } from '@solyra/shared';
 
 export interface IChatRepository {
   createConversation(conversation: Conversation): Promise<Conversation>;
   getConversation(id: string): Promise<Conversation | null>;
-  listConversations(workspaceId: string, userId?: string): Promise<Conversation[]>;
+  listConversations(workspaceId: string, userId?: string, includeArchived?: boolean): Promise<Conversation[]>;
   deleteConversation(id: string, workspaceId: string): Promise<boolean>;
   appendMessage(message: ChatMessage): Promise<ChatMessage>;
   getMessages(conversationId: string): Promise<ChatMessage[]>;
+  archiveConversation(id: string, workspaceId: string): Promise<boolean>;
+  restoreConversation(id: string, workspaceId: string): Promise<boolean>;
+  softDeleteConversation(id: string, workspaceId: string): Promise<boolean>;
+  setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date): Promise<boolean>;
 }
 
 export class PostgresChatRepository implements IChatRepository {
@@ -22,6 +26,9 @@ export class PostgresChatRepository implements IChatRepository {
       modelIdentifier: row.model_identifier,
       systemPromptOverride: row.system_prompt_override ?? undefined,
       messageCount: Number(row.message_count ?? 0),
+      archiveState: (row.archive_state as ArchiveState) ?? 'active',
+      retentionExpiresAt: row.retention_expires_at ? new Date(row.retention_expires_at) : undefined,
+      deletedAt: row.deleted_at ? new Date(row.deleted_at) : undefined,
       createdAt: new Date(row.created_at),
       updatedAt: new Date(row.updated_at),
     };
@@ -42,16 +49,17 @@ export class PostgresChatRepository implements IChatRepository {
   }
 
   async createConversation(conversation: Conversation): Promise<Conversation> {
-    const now = new Date();
     const query = `
       INSERT INTO chat_sessions (
-        id, workspace_id, user_id, title, model_identifier, system_prompt_override, message_count, created_at, updated_at
+        id, workspace_id, user_id, title, model_identifier,
+        system_prompt_override, message_count, created_at, updated_at,
+        archive_state, retention_expires_at, deleted_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *;
     `;
 
-    const res = await this.pool.query(query, [
+    const values = [
       conversation.id,
       conversation.workspaceId,
       conversation.userId,
@@ -59,10 +67,14 @@ export class PostgresChatRepository implements IChatRepository {
       conversation.modelIdentifier,
       conversation.systemPromptOverride ?? null,
       conversation.messageCount ?? 0,
-      conversation.createdAt ?? now,
-      conversation.updatedAt ?? now,
-    ]);
+      conversation.createdAt ? conversation.createdAt.toISOString() : new Date().toISOString(),
+      conversation.updatedAt ? conversation.updatedAt.toISOString() : new Date().toISOString(),
+      conversation.archiveState ?? 'active',
+      conversation.retentionExpiresAt ? conversation.retentionExpiresAt.toISOString() : null,
+      conversation.deletedAt ? conversation.deletedAt.toISOString() : null,
+    ];
 
+    const res = await this.pool.query(query, values);
     return this.mapConversation(res.rows[0]);
   }
 
@@ -71,16 +83,22 @@ export class PostgresChatRepository implements IChatRepository {
     return res.rows.length > 0 ? this.mapConversation(res.rows[0]) : null;
   }
 
-  async listConversations(workspaceId: string, userId?: string): Promise<Conversation[]> {
+  async listConversations(workspaceId: string, userId?: string, includeArchived: boolean = false): Promise<Conversation[]> {
+    let query = 'SELECT * FROM chat_sessions WHERE workspace_id = $1 AND deleted_at IS NULL';
+    const values: unknown[] = [workspaceId];
+
     if (userId) {
-      const res = await this.pool.query(
-        'SELECT * FROM chat_sessions WHERE workspace_id = $1 AND user_id = $2 ORDER BY updated_at DESC',
-        [workspaceId, userId],
-      );
-      return res.rows.map((row) => this.mapConversation(row));
+      query += ' AND user_id = $2';
+      values.push(userId);
     }
 
-    const res = await this.pool.query('SELECT * FROM chat_sessions WHERE workspace_id = $1 ORDER BY updated_at DESC', [workspaceId]);
+    if (!includeArchived) {
+      query += ' AND archive_state = \'active\'';
+    }
+
+    query += ' ORDER BY updated_at DESC';
+
+    const res = await this.pool.query(query, values);
     return res.rows.map((row) => this.mapConversation(row));
   }
 
@@ -120,5 +138,49 @@ export class PostgresChatRepository implements IChatRepository {
   async getMessages(conversationId: string): Promise<ChatMessage[]> {
     const res = await this.pool.query('SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC', [conversationId]);
     return res.rows.map((row) => this.mapMessage(row));
+  }
+
+  async archiveConversation(id: string, workspaceId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE chat_sessions
+       SET archive_state = 'archived', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND workspace_id = $2 AND archive_state = 'active' AND deleted_at IS NULL
+       RETURNING id;`,
+      [id, workspaceId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async restoreConversation(id: string, workspaceId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE chat_sessions
+       SET archive_state = 'active', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND workspace_id = $2 AND archive_state = 'archived' AND deleted_at IS NULL
+       RETURNING id;`,
+      [id, workspaceId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async softDeleteConversation(id: string, workspaceId: string): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE chat_sessions
+       SET archive_state = 'deleted', deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+       RETURNING id;`,
+      [id, workspaceId],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date): Promise<boolean> {
+    const res = await this.pool.query(
+      `UPDATE chat_sessions
+       SET retention_expires_at = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+       RETURNING id;`,
+      [id, workspaceId, expiresAt.toISOString()],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 }

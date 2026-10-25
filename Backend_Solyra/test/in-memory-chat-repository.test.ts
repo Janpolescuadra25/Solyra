@@ -172,4 +172,100 @@ describe('InMemoryChatRepository (IChatRepository Contract Compliance)', () => {
     assert.equal(await repo.deleteConversation('a1', 'ws-beta'), false);
     assert.ok(await repo.getConversation('a1'));
   });
+
+  it('archives and restores conversations with correct state guards', async () => {
+    const conversation: Conversation = {
+      id: 'archive-1',
+      workspaceId: 'ws-alpha',
+      userId: 'user-001',
+      title: 'Archive Flow',
+      modelIdentifier: 'solyra-default',
+      messageCount: 0,
+      archiveState: 'active',
+      createdAt: new Date('2026-10-24T10:00:00Z'),
+      updatedAt: new Date('2026-10-24T10:00:00Z'),
+    };
+
+    await repo.createConversation(conversation);
+    assert.equal(await repo.archiveConversation('archive-1', 'ws-alpha'), true);
+    assert.equal((await repo.getConversation('archive-1'))?.archiveState, 'archived');
+    assert.equal(await repo.archiveConversation('archive-1', 'ws-alpha'), false);
+
+    assert.equal(await repo.restoreConversation('archive-1', 'ws-alpha'), true);
+    assert.equal((await repo.getConversation('archive-1'))?.archiveState, 'active');
+    assert.equal(await repo.restoreConversation('archive-1', 'ws-alpha'), false);
+  });
+
+  it('soft deletes and sets retention expiry without allowing deleted records to recover', async () => {
+    const conversation: Conversation = {
+      id: 'archive-2',
+      workspaceId: 'ws-alpha',
+      userId: 'user-001',
+      title: 'Retention Flow',
+      modelIdentifier: 'solyra-default',
+      messageCount: 0,
+      archiveState: 'active',
+      createdAt: new Date('2026-10-24T11:00:00Z'),
+      updatedAt: new Date('2026-10-24T11:00:00Z'),
+    };
+
+    await repo.createConversation(conversation);
+    assert.equal(await repo.softDeleteConversation('archive-2', 'ws-alpha'), true);
+    assert.equal((await repo.getConversation('archive-2'))?.archiveState, 'deleted');
+    assert.ok((await repo.getConversation('archive-2'))?.deletedAt);
+    assert.equal(await repo.restoreConversation('archive-2', 'ws-alpha'), false);
+
+    await repo.createConversation({
+      ...conversation,
+      id: 'archive-3',
+      archiveState: 'archived',
+      createdAt: new Date('2026-10-24T12:00:00Z'),
+      updatedAt: new Date('2026-10-24T12:00:00Z'),
+    });
+    const expiry = new Date('2026-11-01T00:00:00Z');
+    assert.equal(await repo.setRetentionExpiry('archive-3', 'ws-alpha', expiry), true);
+    assert.deepEqual((await repo.getConversation('archive-3'))?.retentionExpiresAt?.toISOString(), expiry.toISOString());
+  });
+
+  it('enforces workspace isolation for lifecycle operations and archive filtering', async () => {
+    const alpha: Conversation = {
+      id: 'alpha-lifecycle',
+      workspaceId: 'ws-alpha',
+      userId: 'user-001',
+      title: 'Alpha Lifecycle',
+      modelIdentifier: 'solyra-default',
+      messageCount: 0,
+      archiveState: 'active',
+      createdAt: new Date('2026-10-24T09:00:00Z'),
+      updatedAt: new Date('2026-10-24T09:00:00Z'),
+    };
+    const beta: Conversation = {
+      id: 'beta-lifecycle',
+      workspaceId: 'ws-beta',
+      userId: 'user-001',
+      title: 'Beta Lifecycle',
+      modelIdentifier: 'solyra-default',
+      messageCount: 0,
+      archiveState: 'active',
+      createdAt: new Date('2026-10-24T09:30:00Z'),
+      updatedAt: new Date('2026-10-24T09:30:00Z'),
+    };
+
+    await repo.createConversation(alpha);
+    await repo.createConversation(beta);
+
+    assert.equal(await repo.archiveConversation('alpha-lifecycle', 'ws-beta'), false);
+    assert.equal((await repo.getConversation('alpha-lifecycle'))?.archiveState, 'active');
+    assert.equal(await repo.restoreConversation('alpha-lifecycle', 'ws-beta'), false);
+    assert.equal(await repo.setRetentionExpiry('alpha-lifecycle', 'ws-beta', new Date()), false);
+
+    await repo.archiveConversation('alpha-lifecycle', 'ws-alpha');
+    const visibleActive = await repo.listConversations('ws-alpha');
+    assert.deepEqual(visibleActive.map((conversation) => conversation.id), []);
+    const visibleArchived = await repo.listConversations('ws-alpha', undefined, true);
+    assert.deepEqual(visibleArchived.map((conversation) => conversation.id), ['alpha-lifecycle']);
+
+    await repo.softDeleteConversation('alpha-lifecycle', 'ws-alpha');
+    assert.deepEqual((await repo.listConversations('ws-alpha', undefined, true)).map((conversation) => conversation.id), []);
+  });
 });

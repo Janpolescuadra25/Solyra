@@ -73,12 +73,18 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     model_identifier VARCHAR(255) NOT NULL DEFAULT 'gpt-4o',
     system_prompt_override TEXT,
     message_count INTEGER NOT NULL DEFAULT 0,
+    archive_state VARCHAR(32) NOT NULL DEFAULT 'active' CHECK (archive_state IN ('active', 'archived', 'deleted')),
+    retention_expires_at TIMESTAMPTZ,
+    deleted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_workspace ON chat_sessions(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_archive_state ON chat_sessions(archive_state);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_retention_expires ON chat_sessions(retention_expires_at);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_deleted_at ON chat_sessions(deleted_at);
 
 CREATE TABLE IF NOT EXISTS chat_messages (
     id VARCHAR(64) PRIMARY KEY,

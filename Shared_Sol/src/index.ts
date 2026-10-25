@@ -259,6 +259,8 @@ export interface ChatMessage {
   createdAt: Date;
 }
 
+export type ArchiveState = 'active' | 'archived' | 'deleted';
+
 export interface Conversation {
   id: string;
   workspaceId: string;
@@ -267,6 +269,9 @@ export interface Conversation {
   modelIdentifier: string;
   systemPromptOverride?: string;
   messageCount: number;
+  archiveState?: ArchiveState;
+  retentionExpiresAt?: Date;
+  deletedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
