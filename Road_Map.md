@@ -1,16 +1,11 @@
-# Solyra Roadmap
+﻿# Solyra Roadmap
 
 ## Active Phase
-- [ ] **Step 12: Multi-Turn Memory Context, Streaming AST Execution & Council Orchestration**
-  - Multi-turn conversation context retrieval via `postgresBundle.chat.getMessages() ?? []` fed into `compileChatPromptToAst()`, preserving backward compatibility for string arrays and turn objects.
-  - Real-time Server-Sent Events (SSE) streaming endpoint `GET /api/chat/conversations/:id/stream` running `evaluateStreamingAstProgram()` with `AbortController` cleanup and CORS alignment.
-  - High-complexity / governance query routing to `councilEngine.createDeliberationProposal(id, title, desc, CouncilMemberRole.ORACLE)` with 5-minute per-user rate limiting, input sanitization, and error logging.
-  - Resilient frontend stream subscription in `client.ts` with exponential backoff and `ChatWorkspacePage` unmount lifecycle cleanup.
-  - End-to-end integration test suite and AST subsystem documentation updates.
+- [ ] **Step 13: Persistent Conversation Archive & Retention Policy Management** - In Progress (Database schema extension for conversation archive states, retention expiration timestamps, soft-deletion semantics, archive/restore repository methods, retention policy cleanup cron/job, and UI archive management controls)
 
 ## Future Phases
-
 ---
+- [x] **Step 12: Multi-Turn Memory Context, Streaming AST Execution & Council Orchestration** - Commit: 106af71a8c6ecbccbe758126cd419e10e879f848 - Completed & Verified (Multi-turn conversation history normalized via `ChatCompilerHistoryTurn` and `normalizeHistoryTurns()` with strict `validateBoundedAstProgram()` safety; real-time SSE streaming endpoint `GET /api/chat/conversations/:id/stream` with `AbortController` cleanup and ownership checks; `CouncilMemberRole.ORACLE` proposal routing with 5-minute cooldown and XSS sanitization; frontend `subscribeToChatStream()` with exponential backoff and `useEffect` lifecycle unmount cleanup; all integration test suites passing)
 - [x] **Step 11: AST Chat Pipeline Integration & Chat-to-AST Compiler** - Commit: 32a7a306a9f28b15e78d9f0d83db69ad9eb67339 - Completed & Verified (75/75 backend suites pass; deterministic prompt-to-AST compilation via `compileChatPromptToAst()`, sensory input routing via `globalThalamus.routeInput('chat.*')`, live execution via `evaluateAstProgram()`, conversational history persistence with execution telemetry, and end-to-end frontend integration in `MemberRoutes.tsx`).
 ## ARCHIVED: Completed Historical Milestones
 - [x] **Step 10: Strict Author Immutability & Brain Package Signature Verification** - Commit: 9c1ef5fd3004d66ef1ffad692fa5fad1ada809c5 - Completed & Verified (74/74 backend suites pass; Ed25519 asymmetric signature generation, verification, and tamper detection; immutable author constitutional constraints; fail-closed brain loader rejecting uncertified knowledge modifications).
