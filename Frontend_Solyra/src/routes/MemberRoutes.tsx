@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
+  archiveConversation,
   client,
   createConversation,
   fetchConversations,
   fetchMessages,
+  restoreConversation,
   sendMessage,
+  softDeleteConversation,
   subscribeToChatStream,
   type ChatMessage as ChatApiMessage,
   type ConversationSummary,
@@ -239,9 +242,15 @@ export const ChatWorkspacePage: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string>('solyra-default');
+  const [chatFilterTab, setChatFilterTab] = useState<'active' | 'archived'>('active');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const endOfThreadRef = useRef<HTMLDivElement | null>(null);
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeConversationId) ?? null;
+  const visibleConversations = conversations.filter((conversation) =>
+    chatFilterTab === 'active' ? (conversation.archiveState ?? 'active') === 'active' : (conversation.archiveState ?? 'active') !== 'active',
+  );
 
   const getErrorMessage = (caught: unknown): string => {
     if (caught && typeof caught === 'object' && 'response' in caught) {
@@ -256,18 +265,20 @@ export const ChatWorkspacePage: React.FC = () => {
   const loadConversations = useCallback(async () => {
     try {
       setError(null);
-      const nextConversations = await fetchConversations();
+      const nextConversations = await fetchConversations(chatFilterTab === 'archived');
       setConversations(nextConversations);
       setActiveConversationId((current) => {
         if (current && nextConversations.some((conversation) => conversation.id === current)) {
           return current;
         }
-        return nextConversations[0]?.id ?? null;
+
+        const fallback = nextConversations.find((conversation) => (conversation.archiveState ?? 'active') === 'active') ?? nextConversations[0] ?? null;
+        return fallback?.id ?? null;
       });
     } catch (caught) {
       setError(getErrorMessage(caught));
     }
-  }, []);
+  }, [chatFilterTab]);
 
   useEffect(() => {
     void loadConversations();
@@ -342,8 +353,30 @@ export const ChatWorkspacePage: React.FC = () => {
     }
   };
 
+  const handleArchiveAction = async (conversationId: string, type: 'archive' | 'restore' | 'soft-delete') => {
+    try {
+      setActionLoadingId(conversationId);
+      setActionError(null);
+
+      if (type === 'archive') {
+        await archiveConversation(conversationId);
+      } else if (type === 'restore') {
+        await restoreConversation(conversationId);
+      } else {
+        await softDeleteConversation(conversationId);
+      }
+
+      await loadConversations();
+    } catch (caught) {
+      setActionError(getErrorMessage(caught));
+    } finally {
+      setActionLoadingId((current) => (current === conversationId ? null : current));
+    }
+  };
+
   const handleDeleteConversation = async (conversationId: string) => {
     try {
+      setActionLoadingId(conversationId);
       setError(null);
       const response = await client.delete(`/api/chat/conversations/${conversationId}`);
       if (response.data?.success) {
@@ -358,6 +391,8 @@ export const ChatWorkspacePage: React.FC = () => {
       }
     } catch (caught) {
       setError(getErrorMessage(caught));
+    } finally {
+      setActionLoadingId((current) => (current === conversationId ? null : current));
     }
   };
 
@@ -427,39 +462,107 @@ export const ChatWorkspacePage: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex-1 space-y-1 overflow-y-auto p-2">
-            {conversations.length === 0 ? (
-              <div className="px-3 py-8 text-center text-xs text-slate-500">No conversations yet.</div>
-            ) : (
-              conversations.map((conversation) => (
+          <div className="border-b border-slate-800 px-2 pt-2">
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-800 bg-slate-950/60 p-1">
+              {(['active', 'archived'] as const).map((tab) => (
                 <button
-                  key={conversation.id}
+                  key={tab}
                   type="button"
-                  onClick={() => setActiveConversationId(conversation.id)}
-                  className={`group flex w-full items-center justify-between rounded-lg border px-2.5 py-2 text-left transition ${
-                    activeConversationId === conversation.id
-                      ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
-                      : 'border-transparent bg-slate-950/40 text-slate-300 hover:border-slate-700 hover:bg-slate-800/60'
+                  onClick={() => setChatFilterTab(tab)}
+                  className={`rounded-md px-2 py-1.5 text-[11px] font-medium transition ${
+                    chatFilterTab === tab
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                   }`}
                 >
-                  <div className="min-w-0 flex-1 pr-2">
-                    <div className="truncate text-xs font-medium">{conversation.title}</div>
-                    <div className="mt-1 text-[10px] text-slate-500">
-                      {new Date(conversation.updatedAt).toLocaleDateString()}
-                    </div>
-                  </div>
-                  <span
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleDeleteConversation(conversation.id);
-                    }}
-                    className="rounded px-1.5 py-0.5 text-slate-500 opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
-                    aria-label={`Delete conversation ${conversation.title}`}
-                  >
-                    ✕
+                  {tab === 'active' ? 'Active' : 'Archived'}
+                  <span className="ml-1.5 rounded-full bg-slate-700 px-1.5 py-0.5 text-[10px] text-slate-200">
+                    {conversations.filter((conversation) => (tab === 'active' ? (conversation.archiveState ?? 'active') === 'active' : (conversation.archiveState ?? 'active') !== 'active')).length}
                   </span>
                 </button>
-              ))
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 space-y-1 overflow-y-auto p-2">
+            {visibleConversations.length === 0 ? (
+              <div className="px-3 py-8 text-center text-xs text-slate-500">No {chatFilterTab} conversations yet.</div>
+            ) : (
+              visibleConversations.map((conversation) => {
+                const isArchived = (conversation.archiveState ?? 'active') !== 'active';
+                const isLoading = actionLoadingId === conversation.id;
+
+                return (
+                  <div
+                    key={conversation.id}
+                    className={`rounded-lg border p-2 transition ${
+                      activeConversationId === conversation.id
+                        ? 'border-emerald-800 bg-emerald-950/40 text-emerald-300'
+                        : 'border-transparent bg-slate-950/40 text-slate-300 hover:border-slate-700 hover:bg-slate-800/60'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setActiveConversationId(conversation.id)}
+                      className="w-full text-left"
+                    >
+                      <div className="truncate text-xs font-medium">{conversation.title}</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-slate-500">
+                        <span>{new Date(conversation.updatedAt).toLocaleDateString()}</span>
+                        {conversation.retentionExpiresAt && (
+                          <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-200">
+                            Expires: {new Date(conversation.retentionExpiresAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+
+                    <div className="mt-2 flex gap-1.5">
+                      {isArchived ? (
+                        <>
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => void handleArchiveAction(conversation.id, 'restore')}
+                            className="rounded bg-indigo-600 px-2 py-1 text-[10px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isLoading ? 'Working...' : 'Restore'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isLoading}
+                            onClick={() => void handleArchiveAction(conversation.id, 'soft-delete')}
+                            className="rounded bg-rose-600 px-2 py-1 text-[10px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isLoading ? 'Working...' : 'Delete'}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isLoading}
+                          onClick={() => void handleArchiveAction(conversation.id, 'archive')}
+                          className="rounded bg-emerald-600 px-2 py-1 text-[10px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {isLoading ? 'Working...' : 'Archive'}
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleDeleteConversation(conversation.id);
+                        }}
+                        className="ml-auto rounded px-1.5 py-0.5 text-slate-500 hover:text-rose-400"
+                        aria-label={`Delete conversation ${conversation.title}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
 
@@ -500,9 +603,22 @@ export const ChatWorkspacePage: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto px-4 py-4">
-          {error && (
+          {(error || actionError) && (
             <div className="mb-4 rounded-lg border border-rose-800 bg-rose-950/40 px-3 py-2 text-xs text-rose-200">
-              {error}
+              <div className="flex items-start justify-between gap-3">
+                <span>{error ?? actionError}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setActionError(null);
+                  }}
+                  className="text-rose-300 hover:text-white"
+                  aria-label="Dismiss notification"
+                >
+                  ×
+                </button>
+              </div>
             </div>
           )}
 

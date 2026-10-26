@@ -25,6 +25,10 @@ export class InMemoryChatRepository implements IChatRepository {
     return conversation ? structuredClone(conversation) : null;
   }
 
+  async getConversationById(id: string): Promise<Conversation | null> {
+    return this.getConversation(id);
+  }
+
   async listConversations(workspaceId: string, userId?: string, includeArchived: boolean = false): Promise<Conversation[]> {
     return Array.from(this.conversations.values())
       .filter((conversation) => conversation.workspaceId === workspaceId)
@@ -96,14 +100,30 @@ export class InMemoryChatRepository implements IChatRepository {
     return true;
   }
 
-  async setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date): Promise<boolean> {
+  async setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date | null): Promise<boolean> {
     const session = this.conversations.get(id);
     if (!session || session.workspaceId !== workspaceId) return false;
     if (session.deletedAt || (session.archiveState ?? 'active') === 'deleted') return false;
 
-    session.retentionExpiresAt = new Date(expiresAt);
+    session.retentionExpiresAt = expiresAt ? new Date(expiresAt) : undefined;
     session.updatedAt = new Date();
     return true;
+  }
+
+  async cleanupExpiredConversations(now: Date = new Date(), batchSize: number = 50): Promise<number> {
+    const expired = Array.from(this.conversations.values())
+      .filter((conversation) => conversation.workspaceId)
+      .filter((conversation) => conversation.retentionExpiresAt && conversation.archiveState !== 'deleted')
+      .filter((conversation) => new Date(conversation.retentionExpiresAt as Date).getTime() <= now.getTime())
+      .slice(0, batchSize);
+
+    for (const conversation of expired) {
+      conversation.archiveState = 'deleted';
+      conversation.deletedAt = new Date(now);
+      conversation.updatedAt = new Date(now);
+    }
+
+    return expired.length;
   }
 
   clear(): void {

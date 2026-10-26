@@ -16,6 +16,7 @@ import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, typ
 import { CouncilEngine } from './council/engine.js';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, RateLimiter } from './auth/middleware.js';
+import { startRetentionPolicyCleaner } from './persistence/retention-cleaner.js';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
 const startTime = Date.now();
@@ -30,6 +31,7 @@ const loginRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
 const forgotPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 3);
 const resetPasswordRateLimiter = new RateLimiter(15 * 60 * 1000, 5);
 const chatRateLimiter = new RateLimiter(60 * 1000, 120);
+const retentionCleaner = startRetentionPolicyCleaner(postgresBundle.chat);
 const councilEngine = new CouncilEngine();
 const userLastCouncilProposalTime = new Map<string, number>();
 const COUNCIL_PROPOSAL_COOLDOWN_MS = 5 * 60 * 1000;
@@ -147,6 +149,7 @@ globalBrainstem.boot()
 
 const shutdownServer = (): void => {
   stopQueueConsumer();
+  retentionCleaner.stop();
   if (server.listening) {
     server.close();
   }
@@ -297,6 +300,7 @@ const server = http.createServer(async (req, res) => {
 
   if (requestPath.startsWith('/api/chat')) {
     const pathParts = requestPath.split('/').filter(Boolean);
+    console.log('[DEBUG_CHAT_ROUTE]', method, requestPath, JSON.stringify(pathParts), req.headers.authorization ? 'auth-present' : 'auth-missing');
     const chatRateKey = req.socket.remoteAddress || 'unknown';
     const chatLimit = chatRateLimiter.check(chatRateKey);
     if (!chatLimit.allowed) {
@@ -320,8 +324,10 @@ const server = http.createServer(async (req, res) => {
       }
 
       try {
-        const conversations = await postgresBundle.chat.listConversations(req.session.workspaceId, req.session.userId);
-        sendJsonResponse(res, 200, { success: true, conversations });
+        const includeArchived = new URL(req.url ?? '', 'http://localhost').searchParams.get('includeArchived') === 'true';
+        const conversations = await postgresBundle.chat.listConversations(req.session.workspaceId, req.session.userId, includeArchived);
+        const filtered = includeArchived ? conversations : conversations.filter((conversation) => (conversation.archiveState ?? 'active') === 'active');
+        sendJsonResponse(res, 200, { success: true, conversations: filtered });
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to list conversations';
@@ -363,6 +369,70 @@ const server = http.createServer(async (req, res) => {
         return;
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Failed to create conversation';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return;
+      }
+    }
+
+  if (req.method === 'POST' && pathParts.length === 5 && pathParts[0] === 'api' && pathParts[1] === 'chat' && pathParts[2] === 'conversations' && (pathParts[4] === 'archive' || pathParts[4] === 'restore' || pathParts[4] === 'soft-delete' || pathParts[4] === 'set-retention')) {
+      const conversationId = pathParts[3];
+      const action = pathParts[4];
+      const authenticated = await authenticateRequest(req, res, postgresBundle);
+      if (!authenticated || !req.user || !req.session) {
+        return;
+      }
+
+      if (!req.session.workspaceId || !req.session.userId) {
+        sendJsonResponse(res, 401, { success: false, error: 'Unauthorized: missing session workspace or user identity' });
+        return;
+      }
+
+      try {
+        const conversation = await postgresBundle.chat.getConversation(conversationId);
+        if (!conversation) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.workspaceId !== req.session.workspaceId) {
+          sendJsonResponse(res, 404, { success: false, error: 'Conversation not found' });
+          return;
+        }
+        if (conversation.userId !== req.session.userId) {
+          sendJsonResponse(res, 403, { success: false, error: 'Forbidden' });
+          return;
+        }
+
+        let updated;
+        switch (action) {
+          case 'archive':
+            updated = await postgresBundle.chat.archiveConversation(conversationId, req.session.workspaceId);
+            sendJsonResponse(res, 200, { success: true, conversation: updated ? await postgresBundle.chat.getConversation(conversationId) : null });
+            return;
+          case 'restore':
+            updated = await postgresBundle.chat.restoreConversation(conversationId, req.session.workspaceId);
+            sendJsonResponse(res, 200, { success: true, conversation: updated ? await postgresBundle.chat.getConversation(conversationId) : null });
+            return;
+          case 'soft-delete':
+            updated = await postgresBundle.chat.softDeleteConversation(conversationId, req.session.workspaceId);
+            sendJsonResponse(res, 200, { success: true, conversation: updated ? await postgresBundle.chat.getConversation(conversationId) : null });
+            return;
+          case 'set-retention': {
+            const body = await readJsonRequest(req, 1024 * 1024);
+            const expiresDate = isRecord(body) && typeof body.retentionExpiresAt === 'string' && body.retentionExpiresAt
+              ? new Date(body.retentionExpiresAt)
+              : isRecord(body) && body.retentionExpiresAt === null
+                ? null
+                : null;
+            updated = await postgresBundle.chat.setRetentionExpiry(conversationId, req.session.workspaceId, expiresDate);
+            sendJsonResponse(res, 200, { success: true, conversation: updated ? await postgresBundle.chat.getConversation(conversationId) : null });
+            return;
+          }
+          default:
+            sendJsonResponse(res, 404, { success: false, error: 'Not found' });
+            return;
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update conversation';
         sendJsonResponse(res, 500, { success: false, error: message });
         return;
       }

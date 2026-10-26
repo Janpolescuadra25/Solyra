@@ -4,14 +4,16 @@ import type { ArchiveState, ChatMessage, Conversation } from '@solyra/shared';
 export interface IChatRepository {
   createConversation(conversation: Conversation): Promise<Conversation>;
   getConversation(id: string): Promise<Conversation | null>;
+  getConversationById(id: string): Promise<Conversation | null>;
   listConversations(workspaceId: string, userId?: string, includeArchived?: boolean): Promise<Conversation[]>;
   deleteConversation(id: string, workspaceId: string): Promise<boolean>;
   appendMessage(message: ChatMessage): Promise<ChatMessage>;
   getMessages(conversationId: string): Promise<ChatMessage[]>;
-  archiveConversation(id: string, workspaceId: string): Promise<boolean>;
-  restoreConversation(id: string, workspaceId: string): Promise<boolean>;
-  softDeleteConversation(id: string, workspaceId: string): Promise<boolean>;
-  setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date): Promise<boolean>;
+  archiveConversation(id: string, workspaceId?: string): Promise<boolean>;
+  restoreConversation(id: string, workspaceId?: string): Promise<boolean>;
+  softDeleteConversation(id: string, workspaceId?: string): Promise<boolean>;
+  setRetentionExpiry(id: string, workspaceId?: string, expiresAt?: Date | null): Promise<boolean>;
+  cleanupExpiredConversations(now?: Date, batchSize?: number): Promise<number>;
 }
 
 export class PostgresChatRepository implements IChatRepository {
@@ -81,6 +83,10 @@ export class PostgresChatRepository implements IChatRepository {
   async getConversation(id: string): Promise<Conversation | null> {
     const res = await this.pool.query('SELECT * FROM chat_sessions WHERE id = $1', [id]);
     return res.rows.length > 0 ? this.mapConversation(res.rows[0]) : null;
+  }
+
+  async getConversationById(id: string): Promise<Conversation | null> {
+    return this.getConversation(id);
   }
 
   async listConversations(workspaceId: string, userId?: string, includeArchived: boolean = false): Promise<Conversation[]> {
@@ -173,14 +179,37 @@ export class PostgresChatRepository implements IChatRepository {
     return (res.rowCount ?? 0) > 0;
   }
 
-  async setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date): Promise<boolean> {
+  async setRetentionExpiry(id: string, workspaceId: string, expiresAt: Date | null): Promise<boolean> {
     const res = await this.pool.query(
       `UPDATE chat_sessions
        SET retention_expires_at = $3, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND workspace_id = $2 AND deleted_at IS NULL
        RETURNING id;`,
-      [id, workspaceId, expiresAt.toISOString()],
+      [id, workspaceId, expiresAt ? expiresAt.toISOString() : null],
     );
     return (res.rowCount ?? 0) > 0;
+  }
+
+  async cleanupExpiredConversations(now: Date = new Date(), batchSize: number = 50): Promise<number> {
+    const res = await this.pool.query(
+      `WITH expired_batch AS (
+         SELECT id
+         FROM chat_sessions
+         WHERE archive_state != 'deleted'
+           AND retention_expires_at IS NOT NULL
+           AND retention_expires_at <= $1
+           AND deleted_at IS NULL
+         LIMIT $2
+       )
+       UPDATE chat_sessions
+       SET archive_state = 'deleted',
+           deleted_at = NOW(),
+           updated_at = NOW()
+       WHERE id IN (SELECT id FROM expired_batch)
+       RETURNING id;`,
+      [now.toISOString(), batchSize],
+    );
+
+    return res.rowCount ?? 0;
   }
 }

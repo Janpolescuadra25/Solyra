@@ -34,6 +34,9 @@ export interface ConversationSummary {
   userId?: string;
   modelIdentifier?: string;
   messageCount?: number;
+  archiveState?: 'active' | 'archived' | 'deleted';
+  retentionExpiresAt?: string | null;
+  deletedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,9 +55,35 @@ export interface SendMessageResponse {
   error?: string;
 }
 
-export async function fetchConversations(): Promise<ConversationSummary[]> {
-  const response = await client.get('/api/chat/conversations');
+export async function fetchConversations(includeArchived: boolean = false): Promise<ConversationSummary[]> {
+  const query = includeArchived ? '?includeArchived=true' : '';
+  const response = await client.get(`/api/chat/conversations${query}`);
   return response.data?.conversations ?? response.data?.data ?? [];
+}
+
+export async function archiveConversation(conversationId: string): Promise<ConversationSummary> {
+  const response = await client.post(`/api/chat/conversations/${encodeURIComponent(conversationId)}/archive`);
+  return response.data?.conversation ?? response.data?.data ?? null;
+}
+
+export async function restoreConversation(conversationId: string): Promise<ConversationSummary> {
+  const response = await client.post(`/api/chat/conversations/${encodeURIComponent(conversationId)}/restore`);
+  return response.data?.conversation ?? response.data?.data ?? null;
+}
+
+export async function softDeleteConversation(conversationId: string): Promise<ConversationSummary> {
+  const response = await client.post(`/api/chat/conversations/${encodeURIComponent(conversationId)}/soft-delete`);
+  return response.data?.conversation ?? response.data?.data ?? null;
+}
+
+export async function setConversationRetention(
+  conversationId: string,
+  retentionExpiresAt: string | null,
+): Promise<ConversationSummary> {
+  const response = await client.post(`/api/chat/conversations/${encodeURIComponent(conversationId)}/set-retention`, {
+    retentionExpiresAt,
+  });
+  return response.data?.conversation ?? response.data?.data ?? null;
 }
 
 export async function createConversation(title?: string, modelIdentifier = 'solyra-default'): Promise<ConversationSummary> {

@@ -3,7 +3,8 @@
 ## Active Phase
 - [x] **Step 13 Phase 1: Chat Repository Interface Unification** - COMPLETED (Implemented InMemoryChatRepository that strictly implements IChatRepository interface from postgres implementation; workspace isolation, full test coverage with 6/6 tests passing; all 82 backend tests passing; typechecks clean)
 - [x] **Step 13 Phase 2: Database Schema Extension for Archive States** - COMPLETED (Added archive_state, retention_expires_at, deleted_at lifecycle columns; implemented archive/restore/soft-delete/retention repository methods with strict multi-tenant guards)
-- [ ] **Step 13 Phase 3: Retention Policy Engine & UI Controls** - Next (Add cleanup cron/job for expired retention policies; build frontend archive management UI)
+- [x] **Step 13 Phase 3: Retention Policy Engine & UI Controls** - COMPLETED
+- [ ] **Step 14: Organization-Level Access Control & Enterprise Chat Governance** - UPCOMING
 
 ## Future Phases
 ---
