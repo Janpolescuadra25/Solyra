@@ -2,16 +2,19 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { AuthSession } from '@solyra/shared';
 
+export interface CreateSessionData {
+  id?: string;
+  userId: string;
+  workspaceId?: string | null;
+  organizationId?: string | null;
+  tokenHash: string;
+  userAgent?: string;
+  ipAddress?: string;
+  expiresAt: Date | string;
+}
+
 export interface ISessionRepository {
-  createSession(data: {
-    id?: string;
-    userId: string;
-    workspaceId: string;
-    tokenHash: string;
-    userAgent?: string;
-    ipAddress?: string;
-    expiresAt: Date | string;
-  }): Promise<AuthSession>;
+  createSession(data: CreateSessionData): Promise<AuthSession>;
   findSessionById(sessionId: string): Promise<AuthSession | null>;
   findSessionByTokenHash(tokenHash: string): Promise<AuthSession | null>;
   listActiveSessions(limit?: number): Promise<AuthSession[]>;
@@ -27,9 +30,10 @@ export class SessionRepository implements ISessionRepository {
       id: row.id,
       userId: row.user_id,
       workspaceId: row.workspace_id ?? null,
+      organizationId: row.organization_id ?? null,
       tokenHash: row.token_hash,
-      ipAddress: row.ip_address ?? undefined,
-      userAgent: row.user_agent ?? undefined,
+      ipAddress: row.ip_address ?? null,
+      userAgent: row.user_agent ?? null,
       expiresAt: new Date(row.expires_at),
       createdAt: new Date(row.created_at),
       revokedAt: row.revoked_at ? new Date(row.revoked_at) : null,
@@ -37,24 +41,16 @@ export class SessionRepository implements ISessionRepository {
     } satisfies AuthSession;
   }
 
-  async createSession(data: {
-    id?: string;
-    userId: string;
-    workspaceId: string;
-    tokenHash: string;
-    userAgent?: string;
-    ipAddress?: string;
-    expiresAt: Date | string;
-  }): Promise<AuthSession> {
+  async createSession(data: CreateSessionData): Promise<AuthSession> {
     const id = data.id ?? randomUUID();
     const expiresAt = data.expiresAt instanceof Date ? data.expiresAt : new Date(data.expiresAt);
     const res = await this.pool.query(
       `
-        INSERT INTO sessions (id, user_id, workspace_id, token_hash, expires_at, created_at, revoked_at, revocation_reason)
-        VALUES ($1, $2, $3, $4, $5, NOW(), NULL, NULL)
+        INSERT INTO sessions (id, user_id, workspace_id, organization_id, token_hash, expires_at, created_at, revoked_at, revocation_reason)
+        VALUES ($1, $2, $3, $4, $5, $6, NOW(), NULL, NULL)
         RETURNING *
       `,
-      [id, data.userId, data.workspaceId, data.tokenHash, expiresAt]
+      [id, data.userId, data.workspaceId ?? null, data.organizationId ?? null, data.tokenHash, expiresAt]
     );
 
     return this.mapRow(res.rows[0]);
@@ -80,7 +76,7 @@ export class SessionRepository implements ISessionRepository {
     const safeLimit = Math.min(Math.max(1, limit), 200);
     const res = await this.pool.query(
       `
-        SELECT id, user_id, workspace_id, token_hash, expires_at, created_at, revoked_at, revocation_reason, ip_address, user_agent
+        SELECT id, user_id, workspace_id, organization_id, token_hash, expires_at, created_at, revoked_at, revocation_reason, ip_address, user_agent
         FROM sessions
         WHERE revoked_at IS NULL AND expires_at > NOW()
         ORDER BY created_at DESC

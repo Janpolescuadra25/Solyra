@@ -10,11 +10,13 @@ import { PostgresMemoryRepository, type IMemoryRepository } from './repositories
 import { SessionRepository, type ISessionRepository } from './repositories/session.repository.js';
 import { EmailOutboxRepository, type IEmailOutboxRepository } from './repositories/email-outbox.repository.js';
 import { AuditEventRepository, type IAuditEventRepository } from './repositories/audit-event.repository.js';
+import { PostgresOrganizationRepository, type IOrganizationRepository } from './repositories/organization.repository.js';
 
 export interface PostgresPersistenceBundle {
   pool: Pool;
   users: IUserRepository;
   workspaces: IWorkspaceRepository;
+  organizations: IOrganizationRepository;
   chat: IChatRepository;
   knowledge: IKnowledgeRepository;
   memory: IMemoryRepository;
@@ -29,6 +31,7 @@ export function createPostgresBundle(pool: Pool): PostgresPersistenceBundle {
     pool,
     users: new PostgresUserRepository(pool),
     workspaces: new PostgresWorkspaceRepository(pool),
+    organizations: new PostgresOrganizationRepository(pool),
     chat: new PostgresChatRepository(pool),
     knowledge: new PostgresKnowledgeRepository(pool),
     memory: new PostgresMemoryRepository(pool),
@@ -52,5 +55,6 @@ export * from './repositories/chat.repository.js';
 export * from './repositories/knowledge.repository.js';
 export * from './repositories/memory.repository.js';
 export * from './repositories/session.repository.js';
+export * from './repositories/organization.repository.js';
 export * from './repositories/email-outbox.repository.js';
 export * from './repositories/audit-event.repository.js';

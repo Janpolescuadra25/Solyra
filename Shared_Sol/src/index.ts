@@ -104,6 +104,68 @@ export interface ThalamusGateDecision {
 // ============================================================================
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'guest';
+export type OrganizationRole = 'owner' | 'admin' | 'member';
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  ownerId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: OrganizationRole;
+  joinedAt: Date;
+}
+
+export interface OrganizationWorkspace {
+  id: string;
+  organizationId: string;
+  workspaceId: string;
+  assignedAt: Date;
+}
+
+export interface CreateOrganizationInput {
+  name: string;
+  slug: string;
+  ownerId: string;
+}
+
+export interface AddMemberInput {
+  organizationId: string;
+  userId: string;
+  role: OrganizationRole;
+}
+
+export interface LinkWorkspaceInput {
+  organizationId: string;
+  workspaceId: string;
+}
+
+export interface IOrganizationRepository {
+  create(data: CreateOrganizationInput): Promise<Organization>;
+  findById(id: string): Promise<Organization | null>;
+  findBySlug(slug: string): Promise<Organization | null>;
+  listByUser(userId: string): Promise<Organization[]>;
+  addMember(data: AddMemberInput): Promise<OrganizationMember>;
+  getMember(organizationId: string, userId: string): Promise<OrganizationMember | null>;
+  listMembers(organizationId: string): Promise<OrganizationMember[]>;
+  removeMember(organizationId: string, userId: string): Promise<boolean>;
+  updateMemberRole(organizationId: string, userId: string, role: OrganizationRole): Promise<boolean>;
+  linkWorkspace(data: LinkWorkspaceInput): Promise<OrganizationWorkspace>;
+  unlinkWorkspace(organizationId: string, workspaceId: string): Promise<boolean>;
+  listWorkspaces(organizationId: string): Promise<string[]>;
+  getWorkspaceOrganization(workspaceId: string): Promise<Organization | null>;
+}
+
+export function isValidOrganizationSlug(slug: string): boolean {
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && slug.length >= 3 && slug.length <= 48;
+}
 
 export interface User {
   id: string;
@@ -150,13 +212,15 @@ export interface WorkspaceMembership {
 export interface AuthSession {
   id: string;
   userId: string;
-  workspaceId: string;
   tokenHash: string;
-  ipAddress?: string;
-  userAgent?: string;
+  workspaceId?: string | null;
+  organizationId?: string | null;
+  orgRole?: OrganizationRole | null;
+  ipAddress?: string | null;
+  userAgent?: string | null;
   expiresAt: Date;
   createdAt: Date;
-  revokedAt?: Date | string | null;
+  revokedAt?: Date | null;
   revocationReason?: string | null;
 }
 

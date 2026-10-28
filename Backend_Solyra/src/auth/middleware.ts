@@ -1,6 +1,6 @@
 import 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { SessionTokenPayload } from '@solyra/shared';
+import type { AuthSession, Organization, OrganizationRole, SessionTokenPayload } from '@solyra/shared';
 
 import type { PostgresPersistenceBundle } from '../persistence/postgres/index.js';
 import { hashToken, verifySessionToken } from './utils.js';
@@ -8,10 +8,9 @@ import { hashToken, verifySessionToken } from './utils.js';
 declare module 'node:http' {
   interface IncomingMessage {
     user?: SessionTokenPayload & { sessionId?: string };
-    session?: {
-      id: string;
-      userId: string;
-      workspaceId: string;
+    session?: AuthSession & {
+      organizationId?: string | null;
+      orgRole?: OrganizationRole | null;
     };
   }
 }
@@ -128,11 +127,29 @@ export async function authenticateRequest(
     return false;
   }
 
+  let org: Organization | null = null;
+  let orgRole: OrganizationRole | null = null;
+
+  if (bundle.organizations && session.organizationId) {
+    org = await bundle.organizations.findById(session.organizationId);
+    if (org) {
+      const member = await bundle.organizations.getMember(org.id, session.userId);
+      orgRole = member ? member.role : null;
+    }
+  } else if (bundle.organizations && session.workspaceId) {
+    org = await bundle.organizations.getWorkspaceOrganization(session.workspaceId);
+    if (org) {
+      const member = await bundle.organizations.getMember(org.id, session.userId);
+      orgRole = member ? member.role : null;
+    }
+  }
+
   req.user = payload;
   req.session = {
-    id: session.id,
-    userId: session.userId,
-    workspaceId: session.workspaceId,
+    ...session,
+    workspaceId: session.workspaceId ?? null,
+    organizationId: org ? org.id : (session.organizationId ?? null),
+    orgRole: orgRole ?? null,
   };
 
   return true;

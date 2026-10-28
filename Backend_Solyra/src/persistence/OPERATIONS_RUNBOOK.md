@@ -7,6 +7,27 @@
 
 ---
 
+## Step 14 Phase 1: Organization Schema & Persistence Runbook
+
+### Migration execution
+
+```bash
+PGDATABASE="${PGDATABASE:-Solyra_db}" PGUSER="${PGUSER:-postgres}" psql -U "${PGUSER:-postgres}" -d "${PGDATABASE:-Solyra_db}" -f Backend_Solyra/src/persistence/postgres/step14_phase1_organizations.sql
+```
+
+### Rollback execution
+
+```bash
+PGDATABASE="${PGDATABASE:-Solyra_db}" PGUSER="${PGUSER:-postgres}" psql -U "${PGUSER:-postgres}" -d "${PGDATABASE:-Solyra_db}" -f Backend_Solyra/src/persistence/postgres/step14_phase1_organizations_rollback.sql
+```
+
+### Operational notes
+- The `organizations`, `organization_members`, and `organization_workspaces` tables are created idempotently.
+- The migration preserves existing `users`, `workspaces`, and `sessions` records while aligning `workspaces.owner_id` to `UUID` and attaching `sessions.organization_id` for org-scoped auth context.
+- The schema backup file `backup_pre_step14.sql` is generated before execution and kept out of Git via `.gitignore`.
+
+---
+
 ## 1. Overview & Architecture Reference
 
 The Solyra storage architecture is a tiered hybrid substrate designed to balance low-latency session retrieval with bounded memory consumption and crash-resilient disk durability:

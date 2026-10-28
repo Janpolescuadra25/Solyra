@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     id VARCHAR(64) PRIMARY KEY,
     slug VARCHAR(100) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
-    owner_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     is_isolated BOOLEAN NOT NULL DEFAULT FALSE,
     settings JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -52,6 +52,41 @@ CREATE TABLE IF NOT EXISTS workspaces (
 
 CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
 CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id);
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name VARCHAR(255) NOT NULL,
+    slug VARCHAR(64) NOT NULL UNIQUE,
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
+CREATE INDEX IF NOT EXISTS idx_organizations_owner ON organizations(owner_id);
+
+CREATE TABLE IF NOT EXISTS organization_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(32) NOT NULL CHECK (role IN ('owner', 'admin', 'member')),
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_members_user ON organization_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_org_members_org ON organization_members(organization_id);
+
+CREATE TABLE IF NOT EXISTS organization_workspaces (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    workspace_id VARCHAR(64) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, workspace_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_org_workspaces_ws ON organization_workspaces(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_org_workspaces_org ON organization_workspaces(organization_id);
 
 CREATE TABLE IF NOT EXISTS workspace_members (
     id VARCHAR(64) PRIMARY KEY,
@@ -171,16 +206,20 @@ CREATE INDEX IF NOT EXISTS idx_memory_records_salience ON memory_records(tenant_
 CREATE TABLE IF NOT EXISTS sessions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
+    workspace_id VARCHAR(64) REFERENCES workspaces(id) ON DELETE CASCADE,
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
     token_hash VARCHAR(64) NOT NULL UNIQUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     revoked_at TIMESTAMP WITH TIME ZONE,
-    revocation_reason TEXT
+    revocation_reason TEXT,
+    ip_address VARCHAR(45),
+    user_agent TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_org ON sessions(organization_id);
 
 -- AUTH TOKENS (Email Verification, Password Reset)
 CREATE TABLE IF NOT EXISTS tokens (

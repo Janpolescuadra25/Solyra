@@ -15,6 +15,7 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthTokenType = exports.EmailOutboxStatus = exports.AuditEventType = exports.AccountState = exports.ArousalLevel = exports.SystemPriority = void 0;
+exports.isValidOrganizationSlug = isValidOrganizationSlug;
 __exportStar(require("./ast.js"), exports);
 /**
  * Solyra Core Types & System Contracts
@@ -34,6 +35,9 @@ exports.ArousalLevel = {
     HYPERAROUSED: 'hyperaroused',
     ENGAGED: 'alert'
 };
+function isValidOrganizationSlug(slug) {
+    return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) && slug.length >= 3 && slug.length <= 48;
+}
 var AccountState;
 (function (AccountState) {
     AccountState["REGISTERED"] = "REGISTERED";
