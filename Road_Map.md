@@ -7,9 +7,10 @@
   - Implemented PostgreSQL and in-memory organization repositories with owner membership, member role management, and workspace linking semantics.
   - Added idempotent migration scripts and canonical schema alignment for `organizations`, `organization_members`, `organization_workspaces`, and `sessions.organization_id`.
   - Updated the auth middleware to enrich request context with organization membership and org role while preserving workspace-only sessions.
+  > **Phase 1 Completed & Adjudicated:** Commit PIN `ceb1834fde11a5d7f69edad2cc42fe0a536ea5e5`. Architecture documentation: `Backend_Solyra/src/persistence/STEP14_PHASE1_README.md`.
 
 ### Upcoming Phase
-- [ ] **Phase 2: Organization RBAC, Invitations, and Multi-Tenant API Routes** - UPCOMING
+- [ ] **Step 14 Phase 2: Organization Route Handlers & RBAC Middleware** - ACTIVE NEXT
 
 ## Future Phases
 ---
