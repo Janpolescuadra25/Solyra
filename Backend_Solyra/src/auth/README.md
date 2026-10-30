@@ -36,6 +36,22 @@ This module contains the backend authentication stack for Solyra, covering persi
 - `Backend_Solyra/src/auth/middleware.ts`: Bearer-token validation, fail-closed secret resolution, user status checks, and bounded sliding-window rate limiting.
 - `Backend_Solyra/src/index.ts`: Auth route mounting, CORS protection, rate-limited `/auth/forgot-password`, `/auth/reset-password`, `/auth/onboarding`, and safe sanitized `/auth/me` JSON responses.
 
+## Organization RBAC (`requireOrgRole`)
+The organization RBAC guard is implemented in `src/auth/middleware.ts` and reuses `authenticateRequest(...)` to ensure the request is valid before checking tenant access.
+
+### Signature
+```ts
+requireOrgRole(req, res, bundle, allowedRoles, targetOrgId?)
+```
+
+### Behavior
+- Reuses `authenticateRequest()` so unauthenticated requests fail with `401` before any org checks run.
+- Resolves the org target from `targetOrgId` or `req.session.organizationId`.
+- Calls `bundle.organizations.getMember(orgId, req.session.userId)` to confirm membership.
+- Returns `400` when organization context is missing.
+- Returns `403` when the user is not a member or lacks one of the permitted roles.
+- Sets the in-memory session context to the verified role once authorized.
+
 ## Session Lifecycle & Security
 - Passwords are hashed with `bcryptjs` using a salted 10-round configuration.
 - Session tokens are signed with JWT and stored as SHA-256 hashes in the `sessions` table.

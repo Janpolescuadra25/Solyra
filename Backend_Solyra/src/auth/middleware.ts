@@ -155,4 +155,51 @@ export async function authenticateRequest(
   return true;
 }
 
+export async function requireOrgRole(
+  req: IncomingMessage & {
+    session?: AuthSession & {
+      organizationId?: string | null;
+      orgRole?: OrganizationRole | null;
+    };
+  },
+  res: ServerResponse,
+  bundle: PostgresPersistenceBundle,
+  allowedRoles: OrganizationRole[],
+  targetOrgId?: string,
+): Promise<boolean> {
+  if (!req.session) {
+    const authenticated = await authenticateRequest(req, res, bundle);
+    if (!authenticated || !req.session) {
+      return false;
+    }
+  }
+
+  const orgId = targetOrgId ?? req.session?.organizationId ?? undefined;
+  if (!orgId) {
+    sendJsonError(res, 400, 'Organization context required');
+    return false;
+  }
+
+  const userId = req.session?.userId;
+  if (!userId) {
+    sendJsonError(res, 401, 'Session user context is required');
+    return false;
+  }
+
+  const member = await bundle.organizations.getMember(orgId, userId);
+  if (!member) {
+    sendJsonError(res, 403, 'Forbidden: user is not a member of this organization');
+    return false;
+  }
+
+  if (!allowedRoles.includes(member.role)) {
+    sendJsonError(res, 403, 'Forbidden: insufficient organization permissions');
+    return false;
+  }
+
+  req.session.organizationId = orgId;
+  req.session.orgRole = member.role;
+  return true;
+}
+
 export { sendJsonError };

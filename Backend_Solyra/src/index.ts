@@ -15,7 +15,7 @@ import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './per
 import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, type MemoryRecord, type ReadinessStatus } from '@solyra/shared';
 import { CouncilEngine } from './council/engine.js';
 import { AuthService } from './auth/service.js';
-import { authenticateRequest, RateLimiter } from './auth/middleware.js';
+import { authenticateRequest, RateLimiter, requireOrgRole } from './auth/middleware.js';
 import { startRetentionPolicyCleaner } from './persistence/retention-cleaner.js';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
@@ -80,6 +80,43 @@ function authenticateProtectedRequest(req: http.IncomingMessage): boolean {
 
   const token = rawHeader.slice(7).trim();
   return token === configuredToken.trim();
+}
+
+function validateOrigin(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+  const originHeader = Array.isArray(req.headers.origin) ? req.headers.origin[0] : req.headers.origin;
+  if (!originHeader) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(originHeader);
+    const allowedHosts = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
+    if (allowedHosts.has(parsed.hostname)) {
+      return true;
+    }
+
+    const allowedOrigins = new Set([
+      process.env.FRONTEND_URL,
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://localhost:5173',
+      'https://localhost:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
+      'https://127.0.0.1:5173',
+      'https://127.0.0.1:3000',
+    ].filter((value): value is string => typeof value === 'string' && value.length > 0));
+
+    if (allowedOrigins.has(parsed.origin)) {
+      return true;
+    }
+
+    sendJsonResponse(res, 403, { error: 'Forbidden: invalid origin' });
+    return false;
+  } catch {
+    sendJsonResponse(res, 403, { error: 'Forbidden: invalid origin' });
+    return false;
+  }
 }
 
 async function readJsonRequest(req: http.IncomingMessage, maxBytes = 1024 * 1024): Promise<unknown> {
@@ -1825,6 +1862,10 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (await handleOrganizationRoutes(req, res, postgresBundle, requestPath, authRateLimiter)) {
+    return;
+  }
+
   if (method === 'GET' && url === '/health') {
     const health: HealthStatus = {
       status: 'ok',
@@ -1900,11 +1941,301 @@ const server = http.createServer(async (req, res) => {
 
 export { server, globalBus, globalThalamus, globalCouncil, globalBrainLoader };
 
+export async function handleOrganizationRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  bundle: ReturnType<typeof createPostgresPersistence>,
+  requestPath: string,
+  rateLimiter: RateLimiter,
+): Promise<boolean> {
+  const orgPathParts = requestPath.split('/').filter(Boolean);
+  if (!(orgPathParts[0] === 'api' && orgPathParts[1] === 'organizations')) {
+    return false;
+  }
+
+  if (req.method === 'POST' && orgPathParts.length === 2) {
+    const rateLimit = rateLimiter.check(`${req.socket.remoteAddress || 'unknown'}:organization-create`);
+    if (!rateLimit.allowed) {
+      sendJsonResponse(res, 429, { success: false, error: 'Too many organization creation attempts. Please try again later.', retryAfterSeconds: rateLimit.retryAfterSeconds });
+      return true;
+    }
+
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    if (!validateOrigin(req, res)) {
+      return true;
+    }
+
+    try {
+      const body = await readJsonRequest(req, 1024 * 1024);
+      if (!isRecord(body) || typeof body.name !== 'string' || typeof body.slug !== 'string') {
+        sendJsonResponse(res, 400, { success: false, error: 'Organization name and slug are required' });
+        return true;
+      }
+
+      const name = body.name.trim();
+      const slug = body.slug.trim().toLowerCase();
+      const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+      if (!name || name.length > 100) {
+        sendJsonResponse(res, 400, { success: false, error: 'Valid organization name is required (max 100 chars)' });
+        return true;
+      }
+
+      if (!slug || slug.length < 3 || slug.length > 48 || !slugRegex.test(slug)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Valid organization slug is required (3-48 lowercase alphanumeric/hyphen characters)' });
+        return true;
+      }
+
+      const org = await bundle.organizations.create({
+        name,
+        slug,
+        ownerId: req.session.userId,
+      });
+
+      if (bundle.audit) {
+        await bundle.audit.recordEvent({
+          action: 'organization.created',
+          userId: req.session.userId,
+          metadata: { organizationId: org.id, name: org.name, slug: org.slug },
+        });
+      }
+
+      sendJsonResponse(res, 201, { success: true, organization: org });
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create organization';
+      const duplicate = message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique');
+      sendJsonResponse(res, duplicate ? 409 : 500, { success: false, error: duplicate ? 'Organization slug or name already exists' : 'Failed to create organization' });
+      return true;
+    }
+  }
+
+  if (req.method === 'GET' && orgPathParts.length === 2) {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const orgs = await bundle.organizations.listByUser(req.session.userId);
+    sendJsonResponse(res, 200, { success: true, organizations: orgs });
+    return true;
+  }
+
+  if (orgPathParts.length >= 3) {
+    const orgId = orgPathParts[2];
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(orgId)) {
+      sendJsonResponse(res, 400, { success: false, error: 'Invalid organization ID format' });
+      return true;
+    }
+
+    if (req.method === 'GET' && orgPathParts.length === 3) {
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin', 'member'], orgId);
+      if (!authOk) {
+        return true;
+      }
+
+      const org = await bundle.organizations.findById(orgId);
+      if (!org) {
+        sendJsonResponse(res, 404, { success: false, error: 'Organization not found' });
+        return true;
+      }
+
+      sendJsonResponse(res, 200, { success: true, organization: org });
+      return true;
+    }
+
+    if (req.method === 'GET' && orgPathParts.length === 4 && orgPathParts[3] === 'members') {
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin', 'member'], orgId);
+      if (!authOk) {
+        return true;
+      }
+
+      const members = await bundle.organizations.listMembers(orgId);
+      sendJsonResponse(res, 200, { success: true, members });
+      return true;
+    }
+
+    if (req.method === 'POST' && orgPathParts.length === 4 && orgPathParts[3] === 'members') {
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin'], orgId);
+      if (!authOk || !req.session) {
+        return true;
+      }
+
+      if (!validateOrigin(req, res)) {
+        return true;
+      }
+
+      try {
+        const body = await readJsonRequest(req, 1024 * 1024);
+        if (!isRecord(body) || typeof body.userId !== 'string' || typeof body.role !== 'string') {
+          sendJsonResponse(res, 400, { success: false, error: 'userId and role are required' });
+          return true;
+        }
+
+        const targetUserId = body.userId.trim();
+        const role = body.role.trim().toLowerCase();
+        if (!uuidRegex.test(targetUserId)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Valid userId UUID is required' });
+          return true;
+        }
+
+        if (!['owner', 'admin', 'member'].includes(role)) {
+          sendJsonResponse(res, 400, { success: false, error: "Role must be 'owner', 'admin', or 'member'" });
+          return true;
+        }
+
+        const member = await bundle.organizations.addMember({ organizationId: orgId, userId: targetUserId, role: role as any });
+        if (bundle.audit) {
+          await bundle.audit.recordEvent({
+            action: 'organization.member_added',
+            userId: req.session.userId,
+            metadata: { organizationId: orgId, targetUserId, role },
+          });
+        }
+
+        sendJsonResponse(res, 201, { success: true, member });
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to add member';
+        const duplicate = message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('unique');
+        sendJsonResponse(res, duplicate ? 409 : 500, { success: false, error: duplicate ? 'User is already a member of this organization' : 'Failed to add member' });
+        return true;
+      }
+    }
+
+    if (req.method === 'PUT' && orgPathParts.length === 6 && orgPathParts[3] === 'members' && orgPathParts[5] === 'role') {
+      const targetUserId = orgPathParts[4];
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin'], orgId);
+      if (!authOk || !req.session) {
+        return true;
+      }
+
+      if (!validateOrigin(req, res)) {
+        return true;
+      }
+
+      if (!uuidRegex.test(targetUserId)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Invalid target userId format' });
+        return true;
+      }
+
+      try {
+        const body = await readJsonRequest(req, 1024 * 1024);
+        if (!isRecord(body) || typeof body.role !== 'string') {
+          sendJsonResponse(res, 400, { success: false, error: "Role is required in the request body" });
+          return true;
+        }
+
+        const newRole = body.role.trim().toLowerCase();
+        if (!['owner', 'admin', 'member'].includes(newRole)) {
+          sendJsonResponse(res, 400, { success: false, error: "Role must be 'owner', 'admin', or 'member'" });
+          return true;
+        }
+
+        const currentMembers = await bundle.organizations.listMembers(orgId);
+        const targetMember = currentMembers.find((member) => member.userId === targetUserId);
+        if (!targetMember) {
+          sendJsonResponse(res, 404, { success: false, error: 'Target member not found in organization' });
+          return true;
+        }
+
+        if (targetMember.role === 'owner' && newRole !== 'owner') {
+          const ownerCount = currentMembers.filter((member) => member.role === 'owner').length;
+          if (ownerCount <= 1) {
+            sendJsonResponse(res, 400, { success: false, error: 'Cannot demote the last owner of the organization' });
+            return true;
+          }
+        }
+
+        const updated = await bundle.organizations.updateMemberRole(orgId, targetUserId, newRole as any);
+        if (!updated) {
+          sendJsonResponse(res, 404, { success: false, error: 'Target member not found' });
+          return true;
+        }
+
+        if (bundle.audit) {
+          await bundle.audit.recordEvent({
+            action: 'organization.member_role_updated',
+            userId: req.session.userId,
+            metadata: { organizationId: orgId, targetUserId, role: newRole },
+          });
+        }
+
+        sendJsonResponse(res, 200, { success: true, updated: true });
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to update member role';
+        sendJsonResponse(res, 500, { success: false, error: message });
+        return true;
+      }
+    }
+
+    if (req.method === 'DELETE' && orgPathParts.length === 5 && orgPathParts[3] === 'members') {
+      const targetUserId = orgPathParts[4];
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin'], orgId);
+      if (!authOk || !req.session) {
+        return true;
+      }
+
+      if (!validateOrigin(req, res)) {
+        return true;
+      }
+
+      if (!uuidRegex.test(targetUserId)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Invalid target userId format' });
+        return true;
+      }
+
+      const currentMembers = await bundle.organizations.listMembers(orgId);
+      const targetMember = currentMembers.find((member) => member.userId === targetUserId);
+      if (!targetMember) {
+        sendJsonResponse(res, 404, { success: false, error: 'Target member not found in organization' });
+        return true;
+      }
+
+      if (targetMember.role === 'owner') {
+        const ownerCount = currentMembers.filter((member) => member.role === 'owner').length;
+        if (ownerCount <= 1) {
+          sendJsonResponse(res, 400, { success: false, error: 'Cannot remove the last owner of the organization' });
+          return true;
+        }
+      }
+
+      const removed = await bundle.organizations.removeMember(orgId, targetUserId);
+      if (!removed) {
+        sendJsonResponse(res, 404, { success: false, error: 'Member not found or could not be removed' });
+        return true;
+      }
+
+      if (bundle.audit) {
+        await bundle.audit.recordEvent({
+          action: 'organization.member_removed',
+          userId: req.session.userId,
+          metadata: { organizationId: orgId, targetUserId },
+        });
+      }
+
+      sendJsonResponse(res, 200, { success: true, removed: true });
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-if (process.env.NODE_ENV !== 'test') {
+const isTestRun = process.env.NODE_ENV === 'test' || 
+  process.argv.includes('--test') ||
+  process.argv.some((arg) => /(?:^|[\\/])[^\\/]+\.test\.[cm]?[jt]s(?:x)?$/.test(arg));
+
+if (!isTestRun) {
   server.listen(PORT, () => {
     log('info', 'Backend_Solyra service shell started', { port: PORT });
   });
