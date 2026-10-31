@@ -19,6 +19,7 @@ import {
   ChatWorkspacePage,
 } from './routes/MemberRoutes';
 import { OwnerDashboardPage } from './routes/OwnerRoutes';
+import { OrganizationsListPage, OrganizationDetailPage } from './routes/OrganizationRoutes';
 
 export const App: React.FC = () => {
   return (
@@ -38,6 +39,8 @@ export const App: React.FC = () => {
           <Route path="/profile" element={<AuthGuard><ProfilePage /></AuthGuard>} />
           <Route path="/settings" element={<AuthGuard><SettingsPage /></AuthGuard>} />
           <Route path="/onboarding" element={<AuthGuard><OnboardingPage /></AuthGuard>} />
+          <Route path="/organizations" element={<AuthGuard><OrganizationsListPage /></AuthGuard>} />
+          <Route path="/organizations/:orgId" element={<AuthGuard><OrganizationDetailPage /></AuthGuard>} />
 
           <Route path="/admin" element={<AuthGuard><OwnerGuard><OwnerDashboardPage /></OwnerGuard></AuthGuard>} />
           <Route path="/owner" element={<Navigate to="/admin" replace />} />

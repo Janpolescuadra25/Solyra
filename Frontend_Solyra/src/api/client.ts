@@ -1,4 +1,5 @@
 import axios from 'axios';
+import type { Organization, OrganizationRole } from '@solyra/shared';
 
 export const client = axios.create({
   baseURL: '/',
@@ -164,8 +165,42 @@ client.interceptors.request.use((config) => {
   if (token && config.headers) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const activeOrgId = sessionStorage.getItem('activeOrganizationId');
+  if (activeOrgId && config.headers) config.headers['X-Organization-ID'] = activeOrgId;
   return config;
 });
+
+export interface ApiOrganizationMember {
+  id: string;
+  organizationId: string;
+  userId: string;
+  role: OrganizationRole;
+  createdAt: string;
+  updatedAt: string;
+  user?: { id: string; email: string; displayName?: string };
+}
+
+const unwrap = <T,>(data: any): T => data?.data ?? data;
+export async function getOrganizations(): Promise<Organization[]> {
+  const response = await client.get('/api/organizations');
+  return response.data?.organizations ?? response.data?.data ?? [];
+}
+export async function getOrganization(id: string): Promise<Organization> {
+  return unwrap<Organization>((await client.get(`/api/organizations/${encodeURIComponent(id)}`)).data);
+}
+export async function createOrganizationApi(data: { name: string; slug?: string }): Promise<Organization> {
+  return unwrap<Organization>((await client.post('/api/organizations', data)).data);
+}
+export async function getOrganizationMembers(orgId: string): Promise<ApiOrganizationMember[]> {
+  const data = (await client.get(`/api/organizations/${encodeURIComponent(orgId)}/members`)).data;
+  return data?.members ?? data?.data ?? [];
+}
+export async function addOrganizationMember(orgId: string, data: { userId: string; role: OrganizationRole }): Promise<ApiOrganizationMember> {
+  return unwrap<ApiOrganizationMember>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/members`, data)).data);
+}
+export async function updateOrganizationMemberRole(orgId: string, userId: string, role: OrganizationRole): Promise<ApiOrganizationMember> {
+  return unwrap<ApiOrganizationMember>((await client.put(`/api/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`, { role })).data);
+}
 
 client.interceptors.response.use(
   (response) => response,

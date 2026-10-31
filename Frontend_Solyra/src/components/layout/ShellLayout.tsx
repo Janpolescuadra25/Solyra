@@ -2,6 +2,7 @@ import React from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Sparkles, MessageSquare, LayoutDashboard, User, Settings, ShieldAlert, LogOut } from 'lucide-react';
+import { OrganizationSwitcher } from '../organization/OrganizationSwitcher';
 
 export const ShellLayout: React.FC = () => {
   const { user, tier, logout } = useAuth();
@@ -63,6 +64,7 @@ export const ShellLayout: React.FC = () => {
           <div className="flex items-center gap-3">
             {user ? (
               <div className="flex items-center gap-3">
+                <OrganizationSwitcher />
                 <div className="text-right hidden sm:block">
                   <p className="text-xs font-medium text-slate-200">{user.fullName || user.email}</p>
                   <p className="text-[11px] text-slate-500">{user.email}</p>

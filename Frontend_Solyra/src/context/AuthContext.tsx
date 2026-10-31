@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import type { User } from '@solyra/shared';
-import { client } from '../api/client';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import type { Organization, OrganizationRole, User } from '@solyra/shared';
+import { client, createOrganizationApi, getOrganizationMembers, getOrganizations } from '../api/client';
 
 export interface AuthContextType {
   user: User | null;
@@ -12,6 +12,13 @@ export interface AuthContextType {
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   setGuestMode: () => void;
+  organizations: Organization[];
+  currentOrganization: Organization | null;
+  userOrgRole: OrganizationRole | null;
+  isLoadingOrgs: boolean;
+  switchOrganization: (orgId: string) => Promise<void>;
+  refreshOrganizations: () => Promise<void>;
+  createOrganization: (name: string, slug?: string) => Promise<Organization>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,6 +27,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [isGuest, setIsGuest] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [currentOrganization, setCurrentOrganization] = useState<Organization | null>(null);
+  const [userOrgRole, setUserOrgRole] = useState<OrganizationRole | null>(null);
+  const [isLoadingOrgs, setIsLoadingOrgs] = useState(false);
+
+  const refreshOrganizations = useCallback(async () => {
+    if (!user) return;
+    setIsLoadingOrgs(true);
+    try {
+      const orgs = await getOrganizations();
+      setOrganizations(orgs);
+      const saved = sessionStorage.getItem('activeOrganizationId');
+      const current = orgs.find((org) => org.id === saved) ?? orgs[0] ?? null;
+      setCurrentOrganization(current);
+      if (current) {
+        sessionStorage.setItem('activeOrganizationId', current.id);
+        const member = (await getOrganizationMembers(current.id)).find((item) => item.userId === user.id);
+        setUserOrgRole(member?.role ?? null);
+      } else {
+        sessionStorage.removeItem('activeOrganizationId');
+        setUserOrgRole(null);
+      }
+    } catch { setOrganizations([]); setCurrentOrganization(null); setUserOrgRole(null); }
+    finally { setIsLoadingOrgs(false); }
+  }, [user]);
+
+  const switchOrganization = useCallback(async (orgId: string) => {
+    const target = organizations.find((org) => org.id === orgId);
+    if (!target) return;
+    setCurrentOrganization(target);
+    sessionStorage.setItem('activeOrganizationId', target.id);
+    const member = (await getOrganizationMembers(target.id)).find((item) => item.userId === user?.id);
+    setUserOrgRole(member?.role ?? null);
+  }, [organizations, user]);
+
+  const createOrganization = useCallback(async (name: string, slug?: string) => {
+    const created = await createOrganizationApi({ name, slug });
+    await refreshOrganizations();
+    await switchOrganization(created.id);
+    return created;
+  }, [refreshOrganizations, switchOrganization]);
+
+  useEffect(() => { if (user) void refreshOrganizations(); }, [user, refreshOrganizations]);
 
   const refreshUser = async () => {
     const token = sessionStorage.getItem('token');
@@ -36,6 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Failed to refresh user profile:', error);
       sessionStorage.removeItem('token');
+      sessionStorage.removeItem('activeOrganizationId');
       setUser(null);
       setIsGuest(false);
     }
@@ -114,6 +165,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logout,
         refreshUser,
         setGuestMode,
+        organizations,
+        currentOrganization,
+        userOrgRole,
+        isLoadingOrgs,
+        switchOrganization,
+        refreshOrganizations,
+        createOrganization,
       }}
     >
       {children}
