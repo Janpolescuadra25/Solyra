@@ -10,7 +10,12 @@
   > **Phase 1 Completed & Adjudicated:** Commit PIN `ceb1834fde11a5d7f69edad2cc42fe0a536ea5e5`. Architecture documentation: `Backend_Solyra/src/persistence/STEP14_PHASE1_README.md`.
 
 ### Upcoming Phase
-- [ ] **Step 14 Phase 2: Organization Route Handlers & RBAC Middleware** - ACTIVE NEXT
+- [x] **Step 14 Phase 2: Organization Route Handlers & RBAC Middleware** - COMPLETED
+  - Commit PIN: `d36a7f170930f6aa8d464a35464f4f8c2ff6102c`.
+  - Documentation: `Backend_Solyra/src/persistence/STEP14_PHASE2_README.md`.
+  - Verified with 98/98 tests passing across 8 suites.
+  - Added organization lifecycle and membership routes plus `requireOrgRole` RBAC enforcement.
+- [ ] **Step 14 Phase 3: Frontend Organization Management UI** - ACTIVE NEXT
 
 ## Future Phases
 ---
