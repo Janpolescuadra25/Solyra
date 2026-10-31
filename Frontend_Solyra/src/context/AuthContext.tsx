@@ -134,6 +134,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    sessionStorage.removeItem('activeOrganizationId');
     try {
       await client.post('/auth/logout');
     } catch {

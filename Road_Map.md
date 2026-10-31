@@ -15,7 +15,13 @@
   - Documentation: `Backend_Solyra/src/persistence/STEP14_PHASE2_README.md`.
   - Verified with 98/98 tests passing across 8 suites.
   - Added organization lifecycle and membership routes plus `requireOrgRole` RBAC enforcement.
-- [ ] **Step 14 Phase 3: Frontend Organization Management UI** - ACTIVE NEXT
+- [x] **Step 14 Phase 3: Frontend Organization Management UI & Context Integration** - COMPLETED
+  - Commit PIN: `e17b910e3c208f71d728c8a94b4e5e0629db5089`.
+  - Documentation: `Frontend_Solyra/src/components/organization/README.md`.
+  - Added the organization switcher, organization list/detail routes, AuthContext organization state, and `X-Organization-ID` request propagation.
+  - Verified with a clean frontend build and 98/98 backend tests.
+- [ ] **Step 15 Phase 1: Organization Workspace Linking & Isolation** - ACTIVE NEXT
+  - Bind workspace creation and access to active organization membership and persist organization-to-workspace links.
 
 ## Future Phases
 ---
