@@ -58,6 +58,10 @@ export const LinkWorkspaceModal: React.FC<LinkWorkspaceModalProps> = ({
       setWorkspaceId('');
       onClose();
     } catch (err: any) {
+      if (err?.response?.data?.code === 'FORBIDDEN_NOT_WORKSPACE_OWNER') {
+        setError('Only the owner of this workspace can link it to an organization.');
+        return;
+      }
       const message = err?.response?.data?.message || err?.message || 'Failed to link workspace';
       setError(message);
     } finally {

@@ -2186,6 +2186,15 @@ export async function handleOrganizationRoutes(
           return true;
         }
 
+        if (workspace.ownerId !== req.session.userId) {
+          sendJsonResponse(res, 403, {
+            success: false,
+            error: 'Forbidden: only the workspace owner can link it to an organization',
+            code: 'FORBIDDEN_NOT_WORKSPACE_OWNER'
+          });
+          return true;
+        }
+
         const link = await bundle.organizations.linkWorkspace({ organizationId: orgId, workspaceId });
         if (bundle.audit) {
           await bundle.audit.recordEvent({

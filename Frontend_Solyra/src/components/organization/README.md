@@ -79,3 +79,8 @@ The existing member management form and role controls remain intact under the `M
 The implementation was validated with:
 - `npm test --prefix Backend_Solyra`
 - `npm run build --prefix Frontend_Solyra`
+
+## Step 16 Phase 2: Workspace Ownership Validation
+- Enforces source workspace ownership check: only the user who created/owns a personal workspace may link it to an organization.
+- Rejects unauthorized link attempts with HTTP 403 `FORBIDDEN_NOT_WORKSPACE_OWNER`.
+- `LinkWorkspaceModal.tsx` displays clear user guidance when an unauthorized linking attempt occurs.

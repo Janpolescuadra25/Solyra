@@ -218,6 +218,107 @@ test('organization workspace creation route rejects missing creation name with 4
   assert.match(payload.error, /name is required/i);
 });
 
+test('organization workspace linking rejects non-owner attempts with 403', async () => {
+  const ownerId = randomUUID();
+  const otherUserId = randomUUID();
+  const orgId = randomUUID();
+  const workspaceId = randomUUID();
+  const workspace = {
+    id: workspaceId,
+    slug: 'someone-elses-workspace',
+    name: 'Someone Else Workspace',
+    ownerId: otherUserId,
+    isIsolated: false,
+    settings: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const bundle = {
+    audit: { recordEvent: async () => ({}) },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => {
+        if (targetOrgId === orgId && targetUserId === ownerId) {
+          return { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() };
+        }
+        return null;
+      },
+      listWorkspaces: async () => [],
+      linkWorkspace: async () => ({ id: randomUUID(), organizationId: orgId, workspaceId, assignedAt: new Date() }),
+      getWorkspaceOrganization: async () => null,
+    },
+    workspaces: {
+      findById: async (targetWorkspaceId: string) => (targetWorkspaceId === workspaceId ? workspace : null),
+      listByOrganization: async () => [],
+    },
+  } as any;
+
+  const request = createRequest('POST', `/api/organizations/${orgId}/workspaces`, { userId: ownerId, organizationId: orgId, orgRole: 'owner' }, { workspaceId });
+  const response = createMockResponse();
+
+  const handled = await handleOrganizationRoutes(request, response, bundle, `/api/organizations/${orgId}/workspaces`, new RateLimiter(60_000, 5));
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 403);
+
+  const payload = JSON.parse(response.body ?? '{}');
+  assert.equal(payload.code, 'FORBIDDEN_NOT_WORKSPACE_OWNER');
+  assert.match(payload.error, /workspace owner/i);
+});
+
+test('organization workspace linking allows owner to link a workspace', async () => {
+  const ownerId = randomUUID();
+  const orgId = randomUUID();
+  const workspaceId = randomUUID();
+  const workspace = {
+    id: workspaceId,
+    slug: 'owned-workspace',
+    name: 'Owned Workspace',
+    ownerId,
+    isIsolated: false,
+    settings: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const bundle = {
+    audit: { recordEvent: async () => ({}) },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => (
+        targetOrgId === orgId && targetUserId === ownerId ? { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() } : null
+      ),
+      listWorkspaces: async () => [],
+      linkWorkspace: async ({ organizationId, workspaceId: nextWorkspaceId }: { organizationId: string; workspaceId: string }) => ({
+        id: randomUUID(),
+        organizationId,
+        workspaceId: nextWorkspaceId,
+        assignedAt: new Date(),
+      }),
+      getWorkspaceOrganization: async () => null,
+    },
+    workspaces: {
+      findById: async (targetWorkspaceId: string) => (targetWorkspaceId === workspaceId ? workspace : null),
+      listByOrganization: async () => [],
+    },
+  } as any;
+
+  const request = createRequest('POST', `/api/organizations/${orgId}/workspaces`, { userId: ownerId, organizationId: orgId, orgRole: 'owner' }, { workspaceId });
+  const response = createMockResponse();
+
+  const handled = await handleOrganizationRoutes(request, response, bundle, `/api/organizations/${orgId}/workspaces`, new RateLimiter(60_000, 5));
+
+  assert.equal(handled, true);
+  assert.ok([200, 201].includes(response.statusCode));
+
+  const payload = JSON.parse(response.body ?? '{}');
+  assert.equal(payload.success, true);
+    if (payload.link) {
+    assert.equal(payload.link.workspaceId, workspaceId);
+  }
+});
+
 test('organization workspace creation route rejects duplicate slugs with 409', async () => {
   const ownerId = randomUUID();
   const orgId = randomUUID();
