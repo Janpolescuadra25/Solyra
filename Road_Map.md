@@ -20,14 +20,17 @@
   - Documentation: `Frontend_Solyra/src/components/organization/README.md`.
   - Added the organization switcher, organization list/detail routes, AuthContext organization state, and `X-Organization-ID` request propagation.
   - Verified with a clean frontend build and 98/98 backend tests.
-- [ ] **Step 15 Phase 2: Frontend Organization Workspace UI** - ACTIVE NEXT
-  - Prepare the organization workspace management views, workspace linking controls, and org-scoped state wiring for the frontend.
+- [x] **Step 15 Phase 2: Frontend Organization Workspace UI** - COMPLETED
+  - Built `OrganizationWorkspacesList.tsx` and `LinkWorkspaceModal.tsx` with click-outside handling, Escape key dismissal, and `slate-*` styling.
+  - Added deterministic query-param tabs in `OrganizationDetailPage` for `?tab=members` and `?tab=workspaces` while preserving all existing member management logic.
+  - Extended `Frontend_Solyra/src/api/client.ts` with `getOrganizationWorkspaces`, `createOrganizationWorkspace`, and `deleteOrganizationWorkspace` helpers using `unwrap()` and the shared `Workspace` contract.
+  - Documentation: `Frontend_Solyra/src/components/organization/STEP15_PHASE2_README.md`.
 
 ## Future Phases
 ---
 ### ARCHIVED: Completed Historical Milestones
 
-- [x] **Step 15 Phase 1: Organization Workspace Linking & Isolation** - COMPLETED (commit e8c7a3f6b7fe1a9b33f00bb1a42f0da99a1133ba)
+- [x] **Step 15 Phase 1: Organization Workspace Linking & Isolation** - COMPLETED (commit 39999a95f08f769a7ead72d1e8f3a453506599c0)
   - Persisted organization-to-workspace links via the `organization_workspaces` join table.
   - Extended `IWorkspaceRepository` and implementations with `listByOrganization`.
   - Mounted REST endpoints: `GET/POST/DELETE /api/organizations/:orgId/workspaces` with RBAC, existence checks, 409 conflict detection, and rate limiting.

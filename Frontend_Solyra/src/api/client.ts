@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { Organization, OrganizationRole } from '@solyra/shared';
+import type { Organization, OrganizationRole, Workspace } from '@solyra/shared';
 
 export const client = axios.create({
   baseURL: '/',
@@ -198,6 +198,25 @@ export async function getOrganizationMembers(orgId: string): Promise<ApiOrganiza
 export async function addOrganizationMember(orgId: string, data: { userId: string; role: OrganizationRole }): Promise<ApiOrganizationMember> {
   return unwrap<ApiOrganizationMember>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/members`, data)).data);
 }
+
+// Organization Workspace endpoints (Step 15 Phase 2)
+export async function getOrganizationWorkspaces(orgId: string): Promise<Workspace[]> {
+  const data = unwrap<any>((await client.get(`/api/organizations/${encodeURIComponent(orgId)}/workspaces`)).data);
+  return data?.workspaces ?? (Array.isArray(data) ? data : []);
+}
+
+export async function createOrganizationWorkspace(orgId: string, workspaceId: string): Promise<Workspace> {
+  return unwrap<Workspace>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/workspaces`, { workspaceId })).data);
+}
+
+export const linkOrganizationWorkspace = createOrganizationWorkspace;
+
+export async function deleteOrganizationWorkspace(orgId: string, workspaceId: string): Promise<void> {
+  await client.delete(`/api/organizations/${encodeURIComponent(orgId)}/workspaces/${encodeURIComponent(workspaceId)}`);
+}
+
+export const unlinkOrganizationWorkspace = deleteOrganizationWorkspace;
+
 export async function updateOrganizationMemberRole(orgId: string, userId: string, role: OrganizationRole): Promise<ApiOrganizationMember> {
   return unwrap<ApiOrganizationMember>((await client.put(`/api/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`, { role })).data);
 }
