@@ -20,12 +20,11 @@
   - Documentation: `Frontend_Solyra/src/components/organization/README.md`.
   - Added the organization switcher, organization list/detail routes, AuthContext organization state, and `X-Organization-ID` request propagation.
   - Verified with a clean frontend build and 98/98 backend tests.
-- [x] **Step 15 Phase 2: Frontend Organization Workspace UI** - COMPLETED
-  - Built `OrganizationWorkspacesList.tsx` and `LinkWorkspaceModal.tsx` with click-outside handling, Escape key dismissal, and `slate-*` styling.
-  - Added deterministic query-param tabs in `OrganizationDetailPage` for `?tab=members` and `?tab=workspaces` while preserving all existing member management logic.
-  - Extended `Frontend_Solyra/src/api/client.ts` with `getOrganizationWorkspaces`, `createOrganizationWorkspace`, and `deleteOrganizationWorkspace` helpers using `unwrap()` and the shared `Workspace` contract.
-  - Documentation: `Frontend_Solyra/src/components/organization/STEP15_PHASE2_README.md`.
-
+- [ ] **Step 16 Phase 1: Organization-Scoped Workspace Creation** - ACTIVE NEXT
+  - Backend: Implement `POST /api/organizations/:orgId/workspaces/create` to create a new workspace and automatically link it to the organization with RBAC validation.
+  - Frontend: Add "Create New Workspace" action modal in `OrganizationWorkspacesList` allowing direct workspace creation from the organization UI.
+  - API Client: Add `createOrganizationWorkspaceNew` helper.
+  - Documentation & Tests: Update organization README, add backend test coverage, and verify clean builds.
 ## Future Phases
 ---
 ### ARCHIVED: Completed Historical Milestones
@@ -36,6 +35,12 @@
   - Mounted REST endpoints: `GET/POST/DELETE /api/organizations/:orgId/workspaces` with RBAC, existence checks, 409 conflict detection, and rate limiting.
   - Verified with 99/99 backend tests passing and a clean frontend build.
   - Documentation: `Backend_Solyra/src/persistence/STEP15_PHASE1_README.md`.
+
+- [x] **Step 15 Phase 2: Frontend Organization Workspace UI** - COMPLETED (commit a6aa8f31d738d3dcfcf6e255981b638fd37856bd)
+  - Built `OrganizationWorkspacesList.tsx` and `LinkWorkspaceModal.tsx` with click-outside dropdown and Escape key listener.
+  - Added tab routing (`?tab=workspaces`) to `OrganizationDetailPage` in `OrganizationRoutes.tsx` while preserving all member management.
+  - Extended `client.ts` with workspace REST helpers using `unwrap()` and shared `Workspace` types.
+  - Documentation: `Frontend_Solyra/src/components/organization/README.md`.
 - [x] **Step 13: Chat Lifecycle, Enterprise Retention, and Multi-Tenant Isolation** - COMPLETED (`a009c8e97b54ff0d978186b3c8e1018dbac69b9e`)
   - Phase 1: Lifecycle Architecture & Multi-Tenant Scoping (Archive, Restore, Soft-Delete, Hard-Delete, Expiration calculation, Repository interfaces).
   - Phase 2: Schema Migration & Persistence Implementation (PostgreSQL & In-Memory repositories, conversation state columns, retention indexes, message cascading).
