@@ -5,13 +5,32 @@ import type { AuthSession, Organization, OrganizationRole, SessionTokenPayload }
 import type { PostgresPersistenceBundle } from '../persistence/postgres/index.js';
 import { hashToken, verifySessionToken } from './utils.js';
 
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+export const WORKSPACE_ROLE_ORDER: Record<WorkspaceRole, number> = {
+  owner: 4,
+  admin: 3,
+  member: 2,
+  viewer: 1,
+};
+
+export interface EffectiveWorkspaceRoleResolution {
+  role: WorkspaceRole | null;
+  source: 'direct_owner' | 'workspace_member' | 'org_inherited' | 'none';
+  inheritedFrom?: {
+    organizationId: string;
+    orgRole: OrganizationRole;
+  };
+}
+
 declare module 'node:http' {
   interface IncomingMessage {
     user?: SessionTokenPayload & { sessionId?: string };
     session?: AuthSession & {
       organizationId?: string | null;
       orgRole?: OrganizationRole | null;
+      workspaceRole?: WorkspaceRole | null;
     };
+    effectiveWorkspaceRole?: EffectiveWorkspaceRoleResolution | null;
   }
 }
 
@@ -74,6 +93,125 @@ function sendJsonError(res: ServerResponse, statusCode: number, message: string)
   res.end(JSON.stringify({ success: false, error: message }));
 }
 
+function resolveWorkspaceIdFromRequest(req: IncomingMessage): string | null {
+  const workspaceHeader = req.headers['x-workspace-id'];
+  const explicitHeader = Array.isArray(workspaceHeader) ? workspaceHeader[0] : workspaceHeader;
+  if (explicitHeader && explicitHeader.trim()) {
+    return explicitHeader.trim();
+  }
+
+  if (!req.url) {
+    return null;
+  }
+
+  try {
+    const url = new URL(req.url, 'http://localhost');
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    if (pathParts[0] === 'api' && pathParts[1] === 'workspaces' && pathParts[2]) {
+      return pathParts[2];
+    }
+  } catch {
+    // Ignore malformed URLs and fall through to no workspace context.
+  }
+
+  return null;
+}
+
+export async function getEffectiveWorkspaceRole(
+  bundle: PostgresPersistenceBundle,
+  workspaceId: string,
+  userId: string,
+): Promise<EffectiveWorkspaceRoleResolution> {
+  if (!bundle.workspaces || typeof bundle.workspaces.findById !== 'function') {
+    return { role: null, source: 'none' };
+  }
+
+  const workspace = await bundle.workspaces.findById(workspaceId);
+  if (!workspace) {
+    return { role: null, source: 'none' };
+  }
+
+  if (workspace.ownerId === userId) {
+    return { role: 'owner', source: 'direct_owner' };
+  }
+
+  if (bundle.workspaces && typeof bundle.workspaces.getMember === 'function') {
+    const directMember = await bundle.workspaces.getMember(workspaceId, userId);
+    if (directMember) {
+      return { role: directMember.role as WorkspaceRole, source: 'workspace_member' };
+    }
+  }
+
+  if (workspace.isIsolated) {
+    return { role: null, source: 'none' };
+  }
+
+  if (bundle.organizations && typeof bundle.organizations.getOrganizationByWorkspaceId === 'function') {
+    const organization = await bundle.organizations.getOrganizationByWorkspaceId(workspaceId);
+    if (organization && typeof bundle.organizations.getMember === 'function') {
+      const orgMember = await bundle.organizations.getMember(organization.id, userId);
+      if (orgMember) {
+        const inheritedRole: WorkspaceRole = orgMember.role === 'owner' ? 'owner' : orgMember.role === 'admin' ? 'admin' : 'member';
+        return {
+          role: inheritedRole,
+          source: 'org_inherited',
+          inheritedFrom: {
+            organizationId: organization.id,
+            orgRole: orgMember.role,
+          },
+        };
+      }
+    }
+  }
+
+  return { role: null, source: 'none' };
+}
+
+export async function requireWorkspaceRole(
+  req: IncomingMessage,
+  res: ServerResponse,
+  bundle: PostgresPersistenceBundle,
+  allowedRoles: WorkspaceRole[],
+  targetWorkspaceId?: string,
+): Promise<boolean> {
+  if (!req.session) {
+    const authenticated = await authenticateRequest(req, res, bundle);
+    if (!authenticated || !req.session) {
+      return false;
+    }
+  }
+
+  const workspaceId = targetWorkspaceId ?? resolveWorkspaceIdFromRequest(req) ?? req.session?.workspaceId ?? undefined;
+  if (!workspaceId) {
+    sendJsonError(res, 400, 'Workspace context required');
+    return false;
+  }
+
+  const userId = req.session?.userId;
+  if (!userId) {
+    sendJsonError(res, 401, 'Session user context is required');
+    return false;
+  }
+
+  const effectiveRole = await getEffectiveWorkspaceRole(bundle, workspaceId, userId);
+  if (!effectiveRole.role) {
+    sendJsonError(res, 403, 'Forbidden: insufficient workspace permissions');
+    return false;
+  }
+
+  const minimumRoleRank = Math.min(...allowedRoles.map((role) => WORKSPACE_ROLE_ORDER[role]));
+  const actualRoleRank = WORKSPACE_ROLE_ORDER[effectiveRole.role];
+  if (actualRoleRank < minimumRoleRank) {
+    sendJsonError(res, 403, 'Forbidden: insufficient workspace permissions');
+    return false;
+  }
+
+  req.session.workspaceId = workspaceId;
+  req.session.workspaceRole = effectiveRole.role;
+  req.effectiveWorkspaceRole = effectiveRole;
+  return true;
+}
+
 export async function authenticateRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -129,16 +267,17 @@ export async function authenticateRequest(
 
   let org: Organization | null = null;
   let orgRole: OrganizationRole | null = null;
+  const workspaceId = resolveWorkspaceIdFromRequest(req) ?? session.workspaceId ?? null;
 
-  if (bundle.organizations && session.organizationId) {
+  if (bundle.organizations && session.organizationId && typeof bundle.organizations.findById === 'function') {
     org = await bundle.organizations.findById(session.organizationId);
-    if (org) {
+    if (org && typeof bundle.organizations.getMember === 'function') {
       const member = await bundle.organizations.getMember(org.id, session.userId);
       orgRole = member ? member.role : null;
     }
-  } else if (bundle.organizations && session.workspaceId) {
+  } else if (bundle.organizations && session.workspaceId && typeof bundle.organizations.getWorkspaceOrganization === 'function') {
     org = await bundle.organizations.getWorkspaceOrganization(session.workspaceId);
-    if (org) {
+    if (org && typeof bundle.organizations.getMember === 'function') {
       const member = await bundle.organizations.getMember(org.id, session.userId);
       orgRole = member ? member.role : null;
     }
@@ -147,11 +286,13 @@ export async function authenticateRequest(
   req.user = payload;
   req.session = {
     ...session,
-    workspaceId: session.workspaceId ?? null,
+    workspaceId: workspaceId ?? null,
     organizationId: org ? org.id : (session.organizationId ?? null),
     orgRole: orgRole ?? null,
+    workspaceRole: workspaceId ? (await getEffectiveWorkspaceRole(bundle, workspaceId, session.userId)).role : null,
   };
 
+  req.effectiveWorkspaceRole = workspaceId ? await getEffectiveWorkspaceRole(bundle, workspaceId, session.userId) : null;
   return true;
 }
 

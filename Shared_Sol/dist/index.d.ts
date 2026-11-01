@@ -86,6 +86,7 @@ export interface ThalamusGateDecision {
 }
 export type UserRole = 'owner' | 'admin' | 'member' | 'guest';
 export type OrganizationRole = 'owner' | 'admin' | 'member';
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
 export interface Organization {
     id: string;
     name: string;
@@ -134,6 +135,7 @@ export interface IOrganizationRepository {
     linkWorkspace(data: LinkWorkspaceInput): Promise<OrganizationWorkspace>;
     unlinkWorkspace(organizationId: string, workspaceId: string): Promise<boolean>;
     listWorkspaces(organizationId: string): Promise<string[]>;
+    getOrganizationByWorkspaceId(workspaceId: string): Promise<Organization | null>;
     getWorkspaceOrganization(workspaceId: string): Promise<Organization | null>;
 }
 export declare function isValidOrganizationSlug(slug: string): boolean;
@@ -172,7 +174,7 @@ export interface WorkspaceMembership {
     id: string;
     workspaceId: string;
     userId: string;
-    role: UserRole;
+    role: WorkspaceRole;
     joinedAt: Date;
 }
 export interface AuthSession {
@@ -180,6 +182,7 @@ export interface AuthSession {
     userId: string;
     tokenHash: string;
     workspaceId?: string | null;
+    workspaceRole?: WorkspaceRole | null;
     organizationId?: string | null;
     orgRole?: OrganizationRole | null;
     ipAddress?: string | null;

@@ -216,7 +216,7 @@ export class InMemoryOrganizationRepository implements IOrganizationRepository {
     return list.map((entry) => entry.workspaceId);
   }
 
-  async getWorkspaceOrganization(workspaceId: string): Promise<Organization | null> {
+  async getOrganizationByWorkspaceId(workspaceId: string): Promise<Organization | null> {
     for (const [organizationId, links] of this.workspaceLinks.entries()) {
       if (links.some((entry) => entry.workspaceId === workspaceId)) {
         const org = this.organizations.get(organizationId);
@@ -224,5 +224,9 @@ export class InMemoryOrganizationRepository implements IOrganizationRepository {
       }
     }
     return null;
+  }
+
+  async getWorkspaceOrganization(workspaceId: string): Promise<Organization | null> {
+    return this.getOrganizationByWorkspaceId(workspaceId);
   }
 }

@@ -15,7 +15,7 @@ import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './per
 import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, type MemoryRecord, type OrganizationMember, type ReadinessStatus } from '@solyra/shared';
 import { CouncilEngine } from './council/engine.js';
 import { AuthService } from './auth/service.js';
-import { authenticateRequest, RateLimiter, requireOrgRole } from './auth/middleware.js';
+import { authenticateRequest, getEffectiveWorkspaceRole, RateLimiter, requireOrgRole, requireWorkspaceRole } from './auth/middleware.js';
 import { startRetentionPolicyCleaner } from './persistence/retention-cleaner.js';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
@@ -1866,6 +1866,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (await handleWorkspaceRoutes(req, res, postgresBundle, requestPath)) {
+    return;
+  }
+
   if (method === 'GET' && url === '/health') {
     const health: HealthStatus = {
       status: 'ok',
@@ -1940,6 +1944,172 @@ const server = http.createServer(async (req, res) => {
 });
 
 export { server, globalBus, globalThalamus, globalCouncil, globalBrainLoader };
+
+export async function handleWorkspaceRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  bundle: ReturnType<typeof createPostgresPersistence>,
+  requestPath: string,
+): Promise<boolean> {
+  const workspacePathParts = requestPath.split('/').filter(Boolean);
+  if (!(workspacePathParts[0] === 'api' && workspacePathParts[1] === 'workspaces')) {
+    return false;
+  }
+
+  const workspaceId = workspacePathParts[2];
+  if (!workspaceId) {
+    return false;
+  }
+
+  if (req.method === 'GET' && workspacePathParts.length === 4 && workspacePathParts[3] === 'role') {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const workspace = await bundle.workspaces.findById(workspaceId);
+    if (!workspace) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+      return true;
+    }
+
+    const effectiveRole = await getEffectiveWorkspaceRole(bundle, workspaceId, req.session.userId);
+    sendJsonResponse(res, 200, {
+      success: true,
+      data: {
+        workspaceId,
+        role: effectiveRole.role,
+        source: effectiveRole.source,
+        inheritedFrom: effectiveRole.inheritedFrom ?? null,
+      },
+    });
+    return true;
+  }
+
+  if (req.method === 'GET' && workspacePathParts.length === 4 && workspacePathParts[3] === 'members') {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const workspace = await bundle.workspaces.findById(workspaceId);
+    if (!workspace) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+      return true;
+    }
+
+    if (!(await requireWorkspaceRole(req, res, bundle, ['member'], workspaceId))) {
+      return true;
+    }
+
+    const members = await bundle.workspaces.listMembers(workspaceId);
+    sendJsonResponse(res, 200, {
+      success: true,
+      data: {
+        workspaceId,
+        members,
+      },
+    });
+    return true;
+  }
+
+  if (req.method === 'POST' && workspacePathParts.length === 4 && workspacePathParts[3] === 'members') {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const workspace = await bundle.workspaces.findById(workspaceId);
+    if (!workspace) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+      return true;
+    }
+
+    if (!(await requireWorkspaceRole(req, res, bundle, ['admin'], workspaceId))) {
+      return true;
+    }
+
+    let body: unknown;
+    try {
+      body = await readJsonRequest(req, 1024 * 1024);
+    } catch {
+      sendJsonResponse(res, 400, { success: false, error: 'Request body must be valid JSON' });
+      return true;
+    }
+
+    if (!isRecord(body) || typeof body.userId !== 'string' || typeof body.role !== 'string') {
+      sendJsonResponse(res, 400, { success: false, error: 'Workspace member payload requires userId and role' });
+      return true;
+    }
+
+    const targetUserId = body.userId.trim();
+    const nextRole = body.role.trim().toLowerCase();
+    const allowedMemberRoles = ['admin', 'member', 'viewer'] as const;
+    if (!allowedMemberRoles.includes(nextRole as typeof allowedMemberRoles[number])) {
+      sendJsonResponse(res, 400, { success: false, error: 'Workspace role must be one of: admin, member, viewer', code: 'INVALID_WORKSPACE_ROLE' });
+      return true;
+    }
+
+    if (targetUserId === workspace.ownerId) {
+      sendJsonResponse(res, 400, { success: false, error: 'Workspace owner is implicit and cannot be added as a member', code: 'WORKSPACE_OWNER_MEMBER_INVALID' });
+      return true;
+    }
+
+    const existingMember = await bundle.workspaces.getMember(workspaceId, targetUserId);
+    if (existingMember) {
+      sendJsonResponse(res, 409, { success: false, error: 'Workspace member already exists', code: 'WORKSPACE_MEMBER_EXISTS' });
+      return true;
+    }
+
+    const createdMember = await bundle.workspaces.addMember(workspaceId, targetUserId, nextRole);
+    sendJsonResponse(res, 201, { success: true, data: { workspaceId, member: createdMember } });
+    return true;
+  }
+
+  if (req.method === 'DELETE' && workspacePathParts.length === 5 && workspacePathParts[3] === 'members') {
+    const targetUserId = workspacePathParts[4];
+    if (!targetUserId) {
+      return false;
+    }
+
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const workspace = await bundle.workspaces.findById(workspaceId);
+    if (!workspace) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+      return true;
+    }
+
+    if (!(await requireWorkspaceRole(req, res, bundle, ['admin'], workspaceId))) {
+      return true;
+    }
+
+    if (targetUserId === workspace.ownerId) {
+      sendJsonResponse(res, 400, { success: false, error: 'Workspace owner cannot be removed as a member', code: 'CANNOT_REMOVE_WORKSPACE_OWNER' });
+      return true;
+    }
+
+    const member = await bundle.workspaces.getMember(workspaceId, targetUserId);
+    if (!member) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace member not found', code: 'WORKSPACE_MEMBER_NOT_FOUND' });
+      return true;
+    }
+
+    const removed = await bundle.workspaces.removeMember(workspaceId, targetUserId);
+    if (!removed) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace member not found', code: 'WORKSPACE_MEMBER_NOT_FOUND' });
+      return true;
+    }
+
+    sendJsonResponse(res, 200, { success: true, data: { workspaceId, userId: targetUserId, removed: true } });
+    return true;
+  }
+
+  return false;
+}
 
 export async function handleOrganizationRoutes(
   req: http.IncomingMessage,

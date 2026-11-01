@@ -1,5 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import type { Workspace, WorkspaceMembership } from '@solyra/shared';
+
+export const VALID_WORKSPACE_ROLES = ['owner', 'admin', 'member', 'viewer'] as const;
+export type WorkspaceRole = (typeof VALID_WORKSPACE_ROLES)[number];
 
 export interface IWorkspaceRepository {
   findById(id: string): Promise<Workspace | null>;
@@ -9,7 +13,8 @@ export interface IWorkspaceRepository {
   delete(id: string): Promise<boolean>;
   listByOwner(ownerId: string): Promise<Workspace[]>;
   listByOrganization(organizationId: string): Promise<Workspace[]>;
-  addMember(member: WorkspaceMembership): Promise<WorkspaceMembership>;
+  addMember(member: WorkspaceMembership | string, userId?: string, role?: string): Promise<WorkspaceMembership>;
+  getMember(workspaceId: string, userId: string): Promise<WorkspaceMembership | null>;
   removeMember(workspaceId: string, userId: string): Promise<boolean>;
   listMembers(workspaceId: string): Promise<WorkspaceMembership[]>;
 }
@@ -38,6 +43,14 @@ export class PostgresWorkspaceRepository implements IWorkspaceRepository {
       role: row.role,
       joinedAt: new Date(row.joined_at),
     };
+  }
+
+  private normalizeRole(role: string | undefined, fallback = 'member'): WorkspaceRole {
+    const normalized = (role ?? fallback).trim().toLowerCase();
+    if (!VALID_WORKSPACE_ROLES.includes(normalized as WorkspaceRole)) {
+      throw new Error(`Workspace role '${normalized}' is invalid. Allowed roles: owner, admin, member, viewer.`);
+    }
+    return normalized as WorkspaceRole;
   }
 
   async findById(id: string): Promise<Workspace | null> {
@@ -131,8 +144,22 @@ export class PostgresWorkspaceRepository implements IWorkspaceRepository {
     return result.rows.map((row) => this.mapWorkspace(row));
   }
 
-  async addMember(member: WorkspaceMembership): Promise<WorkspaceMembership> {
+  async addMember(member: WorkspaceMembership | string, userId?: string, role = 'member'): Promise<WorkspaceMembership> {
     const now = new Date();
+    const normalizedMember = typeof member === 'string'
+      ? {
+          id: randomUUID(),
+          workspaceId: member,
+          userId: userId ?? '',
+          role: this.normalizeRole(role),
+          joinedAt: now,
+        }
+      : {
+          ...member,
+          role: this.normalizeRole(member.role),
+          joinedAt: member.joinedAt ?? now,
+        };
+
     const query = `
       INSERT INTO workspace_members (id, workspace_id, user_id, role, joined_at)
       VALUES ($1, $2, $3, $4, $5)
@@ -140,7 +167,24 @@ export class PostgresWorkspaceRepository implements IWorkspaceRepository {
       DO UPDATE SET role = EXCLUDED.role
       RETURNING *;
     `;
-    const res = await this.pool.query(query, [member.id, member.workspaceId, member.userId, member.role, member.joinedAt ?? now]);
+    const res = await this.pool.query(query, [
+      normalizedMember.id,
+      normalizedMember.workspaceId,
+      normalizedMember.userId,
+      normalizedMember.role,
+      normalizedMember.joinedAt,
+    ]);
+    return this.mapMember(res.rows[0]);
+  }
+
+  async getMember(workspaceId: string, userId: string): Promise<WorkspaceMembership | null> {
+    const res = await this.pool.query(
+      'SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 LIMIT 1',
+      [workspaceId, userId],
+    );
+    if (res.rows.length === 0) {
+      return null;
+    }
     return this.mapMember(res.rows[0]);
   }
 

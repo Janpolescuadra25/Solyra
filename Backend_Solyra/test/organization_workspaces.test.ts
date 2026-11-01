@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { Readable } from 'node:stream';
 import test from 'node:test';
 
-import { RateLimiter } from '../src/auth/middleware.js';
-import { handleOrganizationRoutes } from '../src/index.js';
+import { RateLimiter, getEffectiveWorkspaceRole, requireWorkspaceRole } from '../src/auth/middleware.js';
+import { signSessionToken } from '../src/auth/utils.js';
+import { handleOrganizationRoutes, handleWorkspaceRoutes } from '../src/index.js';
 
 function createMockResponse() {
   return {
@@ -354,4 +355,211 @@ test('organization workspace creation route rejects duplicate slugs with 409', a
   assert.equal(response.statusCode, 409);
   const payload = JSON.parse(response.body ?? '{}');
   assert.match(payload.error, /already exists/i);
+});
+
+test('workspace role resolution follows direct ownership, workspace membership, and org inheritance priority', async () => {
+  const ownerId = randomUUID();
+  const workspaceMemberId = randomUUID();
+  const orgAdminId = randomUUID();
+  const orgMemberId = randomUUID();
+  const unrelatedId = randomUUID();
+  const workspaceId = randomUUID();
+  const orgId = randomUUID();
+
+  const bundle = {
+    workspaces: {
+      findById: async (targetWorkspaceId: string) => {
+        if (targetWorkspaceId !== workspaceId) {
+          return null;
+        }
+        return {
+          id: workspaceId,
+          slug: 'priority-space',
+          name: 'Priority space',
+          ownerId,
+          isIsolated: false,
+          settings: {},
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      },
+      getMember: async (targetWorkspaceId: string, targetUserId: string) => {
+        if (targetWorkspaceId !== workspaceId) {
+          return null;
+        }
+        if (targetUserId === workspaceMemberId) {
+          return { workspaceId, userId: workspaceMemberId, role: 'member', joinedAt: new Date() };
+        }
+        return null;
+      },
+    },
+    organizations: {
+      getOrganizationByWorkspaceId: async (targetWorkspaceId: string) => {
+        if (targetWorkspaceId !== workspaceId) {
+          return null;
+        }
+        return { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() };
+      },
+      getMember: async (targetOrgId: string, targetUserId: string) => {
+        if (targetOrgId !== orgId) {
+          return null;
+        }
+        if (targetUserId === orgAdminId) {
+          return { organizationId: orgId, userId: orgAdminId, role: 'admin', joinedAt: new Date() };
+        }
+        if (targetUserId === orgMemberId) {
+          return { organizationId: orgId, userId: orgMemberId, role: 'member', joinedAt: new Date() };
+        }
+        return null;
+      },
+    },
+  } as any;
+
+  const ownerResolution = await getEffectiveWorkspaceRole(bundle, workspaceId, ownerId);
+  assert.deepEqual(ownerResolution, { role: 'owner', source: 'direct_owner' });
+
+  const memberResolution = await getEffectiveWorkspaceRole(bundle, workspaceId, workspaceMemberId);
+  assert.deepEqual(memberResolution, { role: 'member', source: 'workspace_member' });
+
+  const orgAdminResolution = await getEffectiveWorkspaceRole(bundle, workspaceId, orgAdminId);
+  assert.deepEqual(orgAdminResolution, { role: 'admin', source: 'org_inherited', inheritedFrom: { organizationId: orgId, orgRole: 'admin' } });
+
+  const orgMemberResolution = await getEffectiveWorkspaceRole(bundle, workspaceId, orgMemberId);
+  assert.deepEqual(orgMemberResolution, { role: 'member', source: 'org_inherited', inheritedFrom: { organizationId: orgId, orgRole: 'member' } });
+
+  const noAccessResolution = await getEffectiveWorkspaceRole(bundle, workspaceId, unrelatedId);
+  assert.deepEqual(noAccessResolution, { role: null, source: 'none' });
+});
+
+test('workspace member routes enforce RBAC on role and membership access', async () => {
+  const ownerId = randomUUID();
+  const memberId = randomUUID();
+  const workspaceId = randomUUID();
+  const orgId = randomUUID();
+
+  const token = signSessionToken({ sub: memberId, sessionId: 'workspace-session' }, 'solyra-dev-jwt-secret-do-not-use-in-production-change-me');
+  const bundle = {
+    users: { findById: async (userId: string) => ({ id: userId, isActive: true }) },
+    sessions: { findSessionByTokenHash: async () => ({ userId: memberId, workspaceId: null, organizationId: orgId, expiresAt: new Date(Date.now() + 3600_000), revokedAt: null }) },
+    workspaces: {
+      findById: async (targetWorkspaceId: string) => {
+        if (targetWorkspaceId !== workspaceId) return null;
+        return { id: workspaceId, slug: 'memberspace', name: 'Member Space', ownerId, isIsolated: false, settings: {}, createdAt: new Date(), updatedAt: new Date() };
+      },
+      getMember: async (targetWorkspaceId: string, targetUserId: string) => {
+        if (targetWorkspaceId !== workspaceId) return null;
+        if (targetUserId === memberId) {
+          return { workspaceId, userId: memberId, role: 'member', joinedAt: new Date() };
+        }
+        return null;
+      },
+      listMembers: async (targetWorkspaceId: string) => targetWorkspaceId === workspaceId ? [{ workspaceId, userId: memberId, role: 'member', joinedAt: new Date() }] : [],
+    },
+    organizations: {
+      getOrganizationByWorkspaceId: async (targetWorkspaceId: string) => targetWorkspaceId === workspaceId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null,
+      getMember: async (targetOrgId: string, targetUserId: string) => {
+        if (targetOrgId !== orgId) return null;
+        if (targetUserId === ownerId) {
+          return { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() };
+        }
+        return null;
+      },
+    },
+  } as any;
+
+  const req = {
+    method: 'GET',
+    url: `http://localhost/api/workspaces/${workspaceId}/members`,
+    headers: { authorization: `Bearer ${token}` },
+    socket: { remoteAddress: '127.0.0.1' },
+    session: { userId: memberId, workspaceId: null, organizationId: orgId, orgRole: 'member', expiresAt: new Date(Date.now() + 3600_000), createdAt: new Date(), revokedAt: null },
+  } as any;
+  const res = createMockResponse();
+
+  const authorized = await requireWorkspaceRole(req, res, bundle, ['member'], workspaceId);
+  assert.equal(authorized, true);
+  assert.equal(req.effectiveWorkspaceRole?.role, 'member');
+
+  const deniedReq = {
+    method: 'POST',
+    url: `http://localhost/api/workspaces/${workspaceId}/members`,
+    headers: { authorization: `Bearer ${token}` },
+    socket: { remoteAddress: '127.0.0.1' },
+    session: { userId: memberId, workspaceId: null, organizationId: orgId, orgRole: 'member', expiresAt: new Date(Date.now() + 3600_000), createdAt: new Date(), revokedAt: null },
+  } as any;
+  const deniedRes = createMockResponse();
+
+  const denied = await requireWorkspaceRole(deniedReq, deniedRes, bundle, ['admin'], workspaceId);
+  assert.equal(denied, false);
+  assert.equal(deniedRes.statusCode, 403);
+
+  const workspaceRoute = await handleWorkspaceRoutes(req, res, bundle, `/api/workspaces/${workspaceId}/members`);
+  assert.equal(workspaceRoute, true);
+  assert.equal(res.statusCode, 200);
+});
+
+test('workspace member management rejects invalid roles and owner removal attempts', async () => {
+  const ownerId = randomUUID();
+  const memberId = randomUUID();
+  const workspaceId = randomUUID();
+  const orgId = randomUUID();
+  const workspace = {
+    id: workspaceId,
+    slug: 'member-admins',
+    name: 'Member Admins',
+    ownerId,
+    isIsolated: false,
+    settings: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const bundle = {
+    users: { findById: async (userId: string) => ({ id: userId, isActive: true }) },
+    sessions: { findSessionByTokenHash: async () => ({ userId: ownerId, workspaceId, organizationId: orgId, expiresAt: new Date(Date.now() + 3600_000), revokedAt: null }) },
+    workspaces: {
+      findById: async (targetWorkspaceId: string) => (targetWorkspaceId === workspaceId ? workspace : null),
+      getMember: async (targetWorkspaceId: string, targetUserId: string) => {
+        if (targetWorkspaceId !== workspaceId) return null;
+        if (targetUserId === ownerId) {
+          return { workspaceId, userId: ownerId, role: 'owner', joinedAt: new Date() };
+        }
+        if (targetUserId === memberId) {
+          return { workspaceId, userId: memberId, role: 'member', joinedAt: new Date() };
+        }
+        return null;
+      },
+      listMembers: async () => [
+        { workspaceId, userId: ownerId, role: 'owner', joinedAt: new Date() },
+        { workspaceId, userId: memberId, role: 'member', joinedAt: new Date() },
+      ],
+      addMember: async () => ({ workspaceId, userId: memberId, role: 'viewer', joinedAt: new Date() }),
+      removeMember: async () => true,
+    },
+    organizations: {
+      getOrganizationByWorkspaceId: async (targetWorkspaceId: string) => (targetWorkspaceId === workspaceId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => {
+        if (targetOrgId !== orgId) return null;
+        if (targetUserId === ownerId) {
+          return { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() };
+        }
+        return null;
+      },
+    },
+  } as any;
+
+  const validToken = signSessionToken({ sub: ownerId, sessionId: 'owner-workspace-session' }, 'solyra-dev-jwt-secret-do-not-use-in-production-change-me');
+  const invalidRequest = createRequest('POST', `/api/workspaces/${workspaceId}/members`, { userId: ownerId, workspaceId, organizationId: orgId, orgRole: 'owner' }, { userId: memberId, role: 'owner' });
+  invalidRequest.headers.authorization = `Bearer ${validToken}`;
+  const invalidResponse = createMockResponse();
+  const invalidHandled = await handleWorkspaceRoutes(invalidRequest, invalidResponse, bundle, `/api/workspaces/${workspaceId}/members`);
+  assert.equal(invalidHandled, true);
+  assert.equal(invalidResponse.statusCode, 400);
+
+  const removalRequest = createRequest('DELETE', `/api/workspaces/${workspaceId}/members/${ownerId}`, { userId: ownerId, workspaceId, organizationId: orgId, orgRole: 'owner' });
+  removalRequest.headers.authorization = `Bearer ${validToken}`;
+  const removalResponse = createMockResponse();
+  const removalHandled = await handleWorkspaceRoutes(removalRequest, removalResponse, bundle, `/api/workspaces/${workspaceId}/members/${ownerId}`);
+  assert.equal(removalHandled, true);
+  assert.equal(removalResponse.statusCode, 400);
 });

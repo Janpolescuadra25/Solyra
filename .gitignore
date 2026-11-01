@@ -5,8 +5,12 @@
 # - ZERO local documentation assets or large binary dumps
 # ==============================================================================
 
-# Local reference documentation (kept local, uncommitted)
-Docs/
+# Local reference documentation (kept local, uncommitted) unless explicitly versioned
+Docs/*
+!Docs/Road_Map.md
+!Docs/implementations/
+Docs/implementations/*
+!Docs/implementations/step16_phase3_organization_workspace_member_permissions.md
 *.docx
 *.pdf
 *.png
@@ -38,6 +42,8 @@ build/
 out/
 .next/
 *.tsbuildinfo
+!Shared_Sol/dist/
+!Shared_Sol/dist/index.d.ts
 
 # Data, caches, and storage tiers
 data/

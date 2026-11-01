@@ -91,8 +91,8 @@ CREATE INDEX IF NOT EXISTS idx_org_workspaces_org ON organization_workspaces(org
 CREATE TABLE IF NOT EXISTS workspace_members (
     id VARCHAR(64) PRIMARY KEY,
     workspace_id VARCHAR(64) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    user_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    role VARCHAR(32) NOT NULL,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(32) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
     joined_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_workspace_member UNIQUE (workspace_id, user_id)
 );

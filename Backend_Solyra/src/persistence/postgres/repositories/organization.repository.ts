@@ -208,7 +208,7 @@ export class PostgresOrganizationRepository implements IOrganizationRepository {
     return res.rows.map((row: any) => row.workspace_id);
   }
 
-  async getWorkspaceOrganization(workspaceId: string): Promise<Organization | null> {
+  async getOrganizationByWorkspaceId(workspaceId: string): Promise<Organization | null> {
     const res = await this.pool.query(
       `SELECT o.*
        FROM organizations o
@@ -221,5 +221,9 @@ export class PostgresOrganizationRepository implements IOrganizationRepository {
       return null;
     }
     return this.mapOrgRow(res.rows[0]);
+  }
+
+  async getWorkspaceOrganization(workspaceId: string): Promise<Organization | null> {
+    return this.getOrganizationByWorkspaceId(workspaceId);
   }
 }
