@@ -29,7 +29,7 @@ export interface SafeUserDto {
 type AuthSessionSummary = {
   id: string;
   userId: string;
-  workspaceId: string;
+  workspaceId: string | null;
   expiresAt: Date;
 };
 
@@ -297,7 +297,7 @@ export class AuthService {
       session: {
         id: session.id,
         userId: session.userId,
-        workspaceId: session.workspaceId,
+        workspaceId: session.workspaceId ?? null,
         expiresAt: session.expiresAt,
       },
     };

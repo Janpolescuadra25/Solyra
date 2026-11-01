@@ -12,7 +12,7 @@ import { evaluateAstProgram, evaluateStreamingAstProgram, validateBoundedAstProg
 import { LRUCache } from './persistence/cache/lru-cache.js';
 import { TieredMemoryRepository } from './persistence/cache/tiered-memory.repository.js';
 import { getPgPool, checkPostgresHealth, createPostgresPersistence } from './persistence/postgres/index.js';
-import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, type MemoryRecord, type ReadinessStatus } from '@solyra/shared';
+import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, type MemoryRecord, type OrganizationMember, type ReadinessStatus } from '@solyra/shared';
 import { CouncilEngine } from './council/engine.js';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, RateLimiter, requireOrgRole } from './auth/middleware.js';
@@ -1997,9 +1997,9 @@ export async function handleOrganizationRoutes(
 
       if (bundle.audit) {
         await bundle.audit.recordEvent({
-          action: 'organization.created',
+          eventType: 'organization.created',
           userId: req.session.userId,
-          metadata: { organizationId: org.id, name: org.name, slug: org.slug },
+          details: { organizationId: org.id, name: org.name, slug: org.slug },
         });
       }
 
@@ -2121,9 +2121,9 @@ export async function handleOrganizationRoutes(
         const link = await bundle.organizations.linkWorkspace({ organizationId: orgId, workspaceId });
         if (bundle.audit) {
           await bundle.audit.recordEvent({
-            action: 'organization.workspace_linked',
+            eventType: 'organization.workspace_linked',
             userId: req.session.userId,
-            metadata: { organizationId: orgId, workspaceId },
+            details: { organizationId: orgId, workspaceId },
           });
         }
 
@@ -2173,9 +2173,9 @@ export async function handleOrganizationRoutes(
 
       if (bundle.audit) {
         await bundle.audit.recordEvent({
-          action: 'organization.workspace_unlinked',
+          eventType: 'organization.workspace_unlinked',
           userId: req.session.userId,
-          metadata: { organizationId: orgId, workspaceId: targetWorkspaceId },
+          details: { organizationId: orgId, workspaceId: targetWorkspaceId },
         });
       }
 
@@ -2226,9 +2226,9 @@ export async function handleOrganizationRoutes(
         const member = await bundle.organizations.addMember({ organizationId: orgId, userId: targetUserId, role: role as any });
         if (bundle.audit) {
           await bundle.audit.recordEvent({
-            action: 'organization.member_added',
+            eventType: 'organization.member_added',
             userId: req.session.userId,
-            metadata: { organizationId: orgId, targetUserId, role },
+            details: { organizationId: orgId, targetUserId, role },
           });
         }
 
@@ -2272,14 +2272,14 @@ export async function handleOrganizationRoutes(
         }
 
         const currentMembers = await bundle.organizations.listMembers(orgId);
-        const targetMember = currentMembers.find((member) => member.userId === targetUserId);
+        const targetMember = currentMembers.find((member: OrganizationMember) => member.userId === targetUserId);
         if (!targetMember) {
           sendJsonResponse(res, 404, { success: false, error: 'Target member not found in organization' });
           return true;
         }
 
         if (targetMember.role === 'owner' && newRole !== 'owner') {
-          const ownerCount = currentMembers.filter((member) => member.role === 'owner').length;
+          const ownerCount = currentMembers.filter((member: OrganizationMember) => member.role === 'owner').length;
           if (ownerCount <= 1) {
             sendJsonResponse(res, 400, { success: false, error: 'Cannot demote the last owner of the organization' });
             return true;
@@ -2294,9 +2294,9 @@ export async function handleOrganizationRoutes(
 
         if (bundle.audit) {
           await bundle.audit.recordEvent({
-            action: 'organization.member_role_updated',
+            eventType: 'organization.member_role_updated',
             userId: req.session.userId,
-            metadata: { organizationId: orgId, targetUserId, role: newRole },
+            details: { organizationId: orgId, targetUserId, role: newRole },
           });
         }
 
@@ -2326,14 +2326,14 @@ export async function handleOrganizationRoutes(
       }
 
       const currentMembers = await bundle.organizations.listMembers(orgId);
-      const targetMember = currentMembers.find((member) => member.userId === targetUserId);
+      const targetMember = currentMembers.find((member: OrganizationMember) => member.userId === targetUserId);
       if (!targetMember) {
         sendJsonResponse(res, 404, { success: false, error: 'Target member not found in organization' });
         return true;
       }
 
       if (targetMember.role === 'owner') {
-        const ownerCount = currentMembers.filter((member) => member.role === 'owner').length;
+        const ownerCount = currentMembers.filter((member: OrganizationMember) => member.role === 'owner').length;
         if (ownerCount <= 1) {
           sendJsonResponse(res, 400, { success: false, error: 'Cannot remove the last owner of the organization' });
           return true;
@@ -2348,9 +2348,9 @@ export async function handleOrganizationRoutes(
 
       if (bundle.audit) {
         await bundle.audit.recordEvent({
-          action: 'organization.member_removed',
+          eventType: 'organization.member_removed',
           userId: req.session.userId,
-          metadata: { organizationId: orgId, targetUserId },
+          details: { organizationId: orgId, targetUserId },
         });
       }
 

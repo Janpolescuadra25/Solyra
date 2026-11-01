@@ -1,5 +1,5 @@
 ﻿import { Pool } from 'pg';
-import type { IKnowledgeRepository } from '@solyra/shared';
+import type { IKnowledgeRepository, IOrganizationRepository } from '@solyra/shared';
 
 import { createPostgresPool, checkPostgresHealth, type SolyraPoolOptions } from './pool.js';
 import { PostgresUserRepository, type IUserRepository } from './repositories/user.repository.js';
@@ -10,7 +10,7 @@ import { PostgresMemoryRepository, type IMemoryRepository } from './repositories
 import { SessionRepository, type ISessionRepository } from './repositories/session.repository.js';
 import { EmailOutboxRepository, type IEmailOutboxRepository } from './repositories/email-outbox.repository.js';
 import { AuditEventRepository, type IAuditEventRepository } from './repositories/audit-event.repository.js';
-import { PostgresOrganizationRepository, type IOrganizationRepository } from './repositories/organization.repository.js';
+import { PostgresOrganizationRepository } from './repositories/organization.repository.js';
 
 export interface PostgresPersistenceBundle {
   pool: Pool;
