@@ -21,6 +21,18 @@ The shared roles are `owner`, `admin`, and `member`. Member management controls 
 - Frontend production build passed.
 - Backend regression suite passed: 98/98 tests.
 
+### Step 16 Phase 1: Organization-Scoped Workspace Creation
+
+#### Flow
+- Owners/admins can create a workspace directly from the organization workspace panel via the `Create Workspace` button.
+- The modal validates the required name, auto-generates a slug, and prevents duplicate submissions while the request is in flight.
+- The backend discriminates between link and create payloads using the same `/api/organizations/:orgId/workspaces` route.
+- New workspaces are created atomically, linked to the active organization, and audited.
+
+#### API & UI surface
+- `Frontend_Solyra/src/api/client.ts` exports `createOrganizationWorkspaceNew`.
+- `Frontend_Solyra/src/components/organization/CreateWorkspaceModal.tsx` renders the creation form and click-outside/Escape dismissal flow.
+- `Frontend_Solyra/src/components/organization/OrganizationWorkspacesList.tsx` opens both the create and link views.
 
 ---
 

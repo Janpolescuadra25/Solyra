@@ -103,3 +103,154 @@ test('organization workspace routes list and link linked workspaces with org RBA
   assert.equal(unauthorizedHandled, true);
   assert.equal(unauthorizedResponse.statusCode, 403);
 });
+
+test('organization workspace creation route creates a workspace linked to the org for owners and admins', async () => {
+  const ownerId = randomUUID();
+  const orgId = randomUUID();
+  const createdIds: string[] = [];
+  const workspaces = new Map<string, any>();
+
+  const bundle = {
+    audit: { recordEvent: async () => ({}) },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => (
+        targetOrgId === orgId && targetUserId === ownerId ? { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() } : null
+      ),
+      listWorkspaces: async (targetOrgId: string) => (targetOrgId === orgId ? createdIds : []),
+      linkWorkspace: async ({ organizationId, workspaceId }: { organizationId: string; workspaceId: string }) => {
+        createdIds.push(workspaceId);
+        return { id: randomUUID(), organizationId, workspaceId, assignedAt: new Date() };
+      },
+      getWorkspaceOrganization: async () => null,
+    },
+    workspaces: {
+      findBySlug: async (slug: string) => Array.from(workspaces.values()).find((workspace) => workspace.slug === slug) ?? null,
+      findById: async (workspaceId: string) => workspaces.get(workspaceId) ?? null,
+      create: async (workspace: any) => {
+        workspaces.set(workspace.id, workspace);
+        return workspace;
+      },
+      listByOrganization: async (targetOrgId: string) => (targetOrgId === orgId ? Array.from(workspaces.values()) : []),
+    },
+  } as any;
+
+  const request = createRequest('POST', `/api/organizations/${orgId}/workspaces`, { userId: ownerId, organizationId: orgId, orgRole: 'owner' }, {
+    name: 'Direct Org Workspace',
+    slug: 'direct-org-ws',
+    description: 'Created directly within org',
+  });
+  const response = createMockResponse();
+
+  const handled = await handleOrganizationRoutes(request, response, bundle, `/api/organizations/${orgId}/workspaces`, new RateLimiter(60_000, 5));
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 201);
+  const payload = JSON.parse(response.body ?? '{}');
+  assert.equal(payload.success, true);
+  assert.equal(payload.workspace.name, 'Direct Org Workspace');
+  assert.equal(payload.workspace.slug, 'direct-org-ws');
+  assert.ok(createdIds.includes(payload.workspace.id));
+});
+
+test('organization workspace creation route rejects regular members with 403', async () => {
+  const ownerId = randomUUID();
+  const memberId = randomUUID();
+  const orgId = randomUUID();
+  const bundle = {
+    audit: { recordEvent: async () => ({}) },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => (
+        targetOrgId === orgId && targetUserId === memberId ? { organizationId: orgId, userId: memberId, role: 'member', joinedAt: new Date() } : null
+      ),
+      listWorkspaces: async () => [],
+      linkWorkspace: async () => ({ id: randomUUID(), organizationId: orgId, workspaceId: randomUUID(), assignedAt: new Date() }),
+      getWorkspaceOrganization: async () => null,
+    },
+    workspaces: {
+      findBySlug: async () => null,
+      findById: async () => null,
+      create: async (workspace: any) => workspace,
+      listByOrganization: async () => [],
+    },
+  } as any;
+
+  const request = createRequest('POST', `/api/organizations/${orgId}/workspaces`, { userId: memberId, organizationId: orgId, orgRole: 'member' }, { name: 'Unauthorized Workspace' });
+  const response = createMockResponse();
+
+  const handled = await handleOrganizationRoutes(request, response, bundle, `/api/organizations/${orgId}/workspaces`, new RateLimiter(60_000, 5));
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 403);
+});
+
+test('organization workspace creation route rejects missing creation name with 400', async () => {
+  const ownerId = randomUUID();
+  const orgId = randomUUID();
+  const bundle = {
+    audit: { recordEvent: async () => ({}) },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => (
+        targetOrgId === orgId && targetUserId === ownerId ? { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() } : null
+      ),
+      listWorkspaces: async () => [],
+      linkWorkspace: async () => ({ id: randomUUID(), organizationId: orgId, workspaceId: randomUUID(), assignedAt: new Date() }),
+      getWorkspaceOrganization: async () => null,
+    },
+    workspaces: {
+      findBySlug: async () => null,
+      findById: async () => null,
+      create: async (workspace: any) => workspace,
+      listByOrganization: async () => [],
+    },
+  } as any;
+
+  const request = createRequest('POST', `/api/organizations/${orgId}/workspaces`, { userId: ownerId, organizationId: orgId, orgRole: 'owner' }, {});
+  const response = createMockResponse();
+
+  const handled = await handleOrganizationRoutes(request, response, bundle, `/api/organizations/${orgId}/workspaces`, new RateLimiter(60_000, 5));
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 400);
+  const payload = JSON.parse(response.body ?? '{}');
+  assert.match(payload.error, /name is required/i);
+});
+
+test('organization workspace creation route rejects duplicate slugs with 409', async () => {
+  const ownerId = randomUUID();
+  const orgId = randomUUID();
+  const existing = { id: randomUUID(), slug: 'duplicate-slug', name: 'First Workspace', ownerId, isIsolated: false, settings: {}, createdAt: new Date(), updatedAt: new Date() };
+  const bundle = {
+    audit: { recordEvent: async () => ({}) },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Org', slug: 'org', ownerId, createdAt: new Date(), updatedAt: new Date() } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => (
+        targetOrgId === orgId && targetUserId === ownerId ? { organizationId: orgId, userId: ownerId, role: 'owner', joinedAt: new Date() } : null
+      ),
+      listWorkspaces: async () => [existing.id],
+      linkWorkspace: async () => ({ id: randomUUID(), organizationId: orgId, workspaceId: randomUUID(), assignedAt: new Date() }),
+      getWorkspaceOrganization: async () => null,
+    },
+    workspaces: {
+      findBySlug: async (slug: string) => (slug === existing.slug ? existing : null),
+      findById: async () => null,
+      create: async (workspace: any) => workspace,
+      listByOrganization: async () => [existing],
+    },
+  } as any;
+
+  const request = createRequest('POST', `/api/organizations/${orgId}/workspaces`, { userId: ownerId, organizationId: orgId, orgRole: 'owner' }, {
+    name: 'Duplicate Workspace',
+    slug: 'duplicate-slug',
+  });
+  const response = createMockResponse();
+
+  const handled = await handleOrganizationRoutes(request, response, bundle, `/api/organizations/${orgId}/workspaces`, new RateLimiter(60_000, 5));
+
+  assert.equal(handled, true);
+  assert.equal(response.statusCode, 409);
+  const payload = JSON.parse(response.body ?? '{}');
+  assert.match(payload.error, /already exists/i);
+});

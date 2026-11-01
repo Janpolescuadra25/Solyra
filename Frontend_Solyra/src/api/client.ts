@@ -1,6 +1,8 @@
 import axios from 'axios';
 import type { Organization, OrganizationRole, Workspace } from '@solyra/shared';
 
+export type { Organization, OrganizationRole, Workspace } from '@solyra/shared';
+
 export const client = axios.create({
   baseURL: '/',
   headers: {
@@ -199,17 +201,40 @@ export async function addOrganizationMember(orgId: string, data: { userId: strin
   return unwrap<ApiOrganizationMember>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/members`, data)).data);
 }
 
-// Organization Workspace endpoints (Step 15 Phase 2)
+// Organization Workspace endpoints (Step 15 Phase 2 + Step 16 Phase 1)
 export async function getOrganizationWorkspaces(orgId: string): Promise<Workspace[]> {
   const data = unwrap<any>((await client.get(`/api/organizations/${encodeURIComponent(orgId)}/workspaces`)).data);
   return data?.workspaces ?? (Array.isArray(data) ? data : []);
 }
 
-export async function createOrganizationWorkspace(orgId: string, workspaceId: string): Promise<Workspace> {
-  return unwrap<Workspace>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/workspaces`, { workspaceId })).data);
+export interface CreateOrgWorkspacePayload {
+  name: string;
+  slug?: string;
+  description?: string;
+  isIsolated?: boolean;
+  settings?: Record<string, unknown>;
 }
 
-export const linkOrganizationWorkspace = createOrganizationWorkspace;
+export async function createOrganizationWorkspace(orgId: string, workspaceId: string): Promise<Workspace> {
+  const response = await client.post(`/api/organizations/${encodeURIComponent(orgId)}/workspaces`, { workspaceId });
+  return response.data?.workspace ?? response.data?.data ?? null;
+}
+
+export const createOrganizationWorkspaceNew = async (
+  organizationId: string,
+  payload: CreateOrgWorkspacePayload,
+): Promise<Workspace> => {
+  const response = await client.post(`/api/organizations/${encodeURIComponent(organizationId)}/workspaces`, payload);
+  return response.data?.workspace ?? response.data?.data ?? null;
+};
+
+export const linkOrganizationWorkspace = async (
+  organizationId: string,
+  workspaceId: string,
+): Promise<Workspace> => {
+  const response = await client.post(`/api/organizations/${encodeURIComponent(organizationId)}/workspaces`, { workspaceId });
+  return response.data?.workspace ?? response.data?.data ?? null;
+};
 
 export async function deleteOrganizationWorkspace(orgId: string, workspaceId: string): Promise<void> {
   await client.delete(`/api/organizations/${encodeURIComponent(orgId)}/workspaces/${encodeURIComponent(workspaceId)}`);

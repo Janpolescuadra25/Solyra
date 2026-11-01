@@ -2075,20 +2075,88 @@ export async function handleOrganizationRoutes(
         return true;
       }
 
-      const rateLimit = rateLimiter.check(`${req.socket.remoteAddress || 'unknown'}:organization-workspace-link`);
-      if (!rateLimit.allowed) {
-        sendJsonResponse(res, 429, { success: false, error: 'Too many organization workspace link attempts. Please try again later.', retryAfterSeconds: rateLimit.retryAfterSeconds });
-        return true;
+      if (req.method === 'POST') {
+        // Route body discrimination is handled below for create vs link flows.
       }
 
       try {
-        const body = await readJsonRequest(req, 1024 * 1024);
-        if (!isRecord(body) || typeof body.workspaceId !== 'string') {
-          sendJsonResponse(res, 400, { success: false, error: 'workspaceId is required' });
+        let body: unknown;
+        body = await readJsonRequest(req, 1024 * 1024);
+        if (!isRecord(body)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Request body is required' });
           return true;
         }
 
-        const workspaceId = body.workspaceId.trim();
+        const isCreateRequest = typeof body.name === 'string' && (!('workspaceId' in body) || typeof body.workspaceId !== 'string');
+        const isLinkRequest = typeof body.workspaceId === 'string';
+
+        if (isCreateRequest) {
+          const rateLimit = rateLimiter.check(`${req.socket.remoteAddress || 'unknown'}:organization-workspace-create`);
+          if (!rateLimit.allowed) {
+            sendJsonResponse(res, 429, { success: false, error: 'Too many workspace creation attempts. Please try again later.', retryAfterSeconds: rateLimit.retryAfterSeconds });
+            return true;
+          }
+
+          const rawName = typeof body.name === 'string' ? body.name : '';
+          const name = rawName.trim();
+          if (!name) {
+            sendJsonResponse(res, 400, { success: false, error: 'Workspace name is required' });
+            return true;
+          }
+
+          const rawSlug = typeof body.slug === 'string' ? body.slug.trim().toLowerCase() : '';
+          const slug = rawSlug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+          if (!slug || slug.length < 2 || slug.length > 64) {
+            sendJsonResponse(res, 400, { success: false, error: 'A valid workspace slug is required' });
+            return true;
+          }
+
+          const existingSlug = await bundle.workspaces.findBySlug(slug);
+          if (existingSlug) {
+            sendJsonResponse(res, 409, { success: false, error: 'Workspace slug already exists. Please choose another.' });
+            return true;
+          }
+
+          const newWorkspace = {
+            id: randomUUID(),
+            slug,
+            name,
+            ownerId: req.session.userId,
+            description: typeof body.description === 'string' ? body.description.trim() : undefined,
+            isIsolated: typeof body.isIsolated === 'boolean' ? body.isIsolated : false,
+            settings: isRecord(body.settings) ? (body.settings as Record<string, unknown>) : {},
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          const createdWorkspace = await bundle.workspaces.create(newWorkspace as any);
+          await bundle.organizations.linkWorkspace({ organizationId: orgId, workspaceId: createdWorkspace.id });
+
+          if (bundle.audit) {
+            await bundle.audit.recordEvent({
+              eventType: 'organization.workspace_created',
+              userId: req.session.userId,
+              details: { organizationId: orgId, workspaceId: createdWorkspace.id, slug: createdWorkspace.slug, name: createdWorkspace.name },
+            });
+          }
+
+          sendJsonResponse(res, 201, { success: true, workspace: createdWorkspace });
+          return true;
+        }
+
+        if (!isLinkRequest) {
+          sendJsonResponse(res, 400, { success: false, error: 'workspaceId is required for linking or name is required for creation' });
+          return true;
+        }
+
+        const rateLimit = rateLimiter.check(`${req.socket.remoteAddress || 'unknown'}:organization-workspace-link`);
+        if (!rateLimit.allowed) {
+          sendJsonResponse(res, 429, { success: false, error: 'Too many organization workspace link attempts. Please try again later.', retryAfterSeconds: rateLimit.retryAfterSeconds });
+          return true;
+        }
+
+        const rawWorkspaceId = typeof body.workspaceId === 'string' ? body.workspaceId : '';
+        const workspaceId = rawWorkspaceId.trim();
         if (!uuidRegex.test(workspaceId)) {
           sendJsonResponse(res, 400, { success: false, error: 'Valid workspaceId UUID is required' });
           return true;

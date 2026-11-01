@@ -7,6 +7,7 @@ import {
   deleteOrganizationWorkspace,
 } from '../../api/client';
 import { LinkWorkspaceModal } from './LinkWorkspaceModal';
+import { CreateWorkspaceModal } from './CreateWorkspaceModal';
 
 interface OrganizationWorkspacesListProps {
   orgId: string;
@@ -20,7 +21,8 @@ export const OrganizationWorkspacesList: React.FC<OrganizationWorkspacesListProp
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [unlinkingId, setUnlinkingId] = useState<string | null>(null);
 
   const fetchWorkspaces = useCallback(async () => {
@@ -43,6 +45,10 @@ export const OrganizationWorkspacesList: React.FC<OrganizationWorkspacesListProp
   const handleLink = async (workspaceId: string) => {
     await createOrganizationWorkspace(orgId, workspaceId);
     await fetchWorkspaces();
+  };
+
+  const handleWorkspaceCreated = (newWorkspace: Workspace) => {
+    setWorkspaces((prev) => (prev.some((item) => item.id === newWorkspace.id) ? prev : [...prev, newWorkspace]));
   };
 
   const handleUnlink = async (workspaceId: string) => {
@@ -72,18 +78,34 @@ export const OrganizationWorkspacesList: React.FC<OrganizationWorkspacesListProp
           </p>
         </div>
         {canManage && (
-          <div className="relative">
+          <div className="relative flex items-center gap-2">
             <button
-              onClick={() => setIsModalOpen(!isModalOpen)}
+              onClick={() => setIsCreateModalOpen(true)}
               className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700"
+            >
+              <Plus className="h-4 w-4" />
+              Create Workspace
+            </button>
+            <button
+              onClick={() => setIsLinkModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
             >
               <Plus className="h-4 w-4" />
               Link Workspace
             </button>
             <LinkWorkspaceModal
-              isOpen={isModalOpen}
-              onClose={() => setIsModalOpen(false)}
+              isOpen={isLinkModalOpen}
+              onClose={() => setIsLinkModalOpen(false)}
               onLink={handleLink}
+            />
+            <CreateWorkspaceModal
+              organizationId={orgId}
+              isOpen={isCreateModalOpen}
+              onClose={() => setIsCreateModalOpen(false)}
+              onWorkspaceCreated={(workspace) => {
+                handleWorkspaceCreated(workspace);
+                setIsCreateModalOpen(false);
+              }}
             />
           </div>
         )}
@@ -115,12 +137,19 @@ export const OrganizationWorkspacesList: React.FC<OrganizationWorkspacesListProp
           </div>
           <h3 className="mt-4 text-sm font-medium text-slate-900 dark:text-slate-100">No workspaces linked</h3>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Link an existing workspace to share resources and manage access.
+            Create a workspace for this organization or link an existing one to share resources and manage access.
           </p>
           {canManage && (
-            <div className="relative mt-4">
+            <div className="relative mt-4 flex gap-2 justify-center">
               <button
-                onClick={() => setIsModalOpen(!isModalOpen)}
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-indigo-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create Workspace
+              </button>
+              <button
+                onClick={() => setIsLinkModalOpen(true)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 <Plus className="h-3.5 w-3.5" />

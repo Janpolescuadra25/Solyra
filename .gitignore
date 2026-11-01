@@ -68,3 +68,6 @@ Desktop.ini
 # Local AI agent tooling and scratchpads
 .agents/
 backup_pre_step14.sql
+
+# Local tooling
+.codely-cli/

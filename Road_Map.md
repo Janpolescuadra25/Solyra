@@ -20,11 +20,11 @@
   - Documentation: `Frontend_Solyra/src/components/organization/README.md`.
   - Added the organization switcher, organization list/detail routes, AuthContext organization state, and `X-Organization-ID` request propagation.
   - Verified with a clean frontend build and 98/98 backend tests.
-- [ ] **Step 16 Phase 1: Organization-Scoped Workspace Creation** - ACTIVE NEXT
-  - Backend: Implement `POST /api/organizations/:orgId/workspaces/create` to create a new workspace and automatically link it to the organization with RBAC validation.
-  - Frontend: Add "Create New Workspace" action modal in `OrganizationWorkspacesList` allowing direct workspace creation from the organization UI.
-  - API Client: Add `createOrganizationWorkspaceNew` helper.
-  - Documentation & Tests: Update organization README, add backend test coverage, and verify clean builds.
+- [x] **Step 16 Phase 1: Organization-Scoped Workspace Creation** - COMPLETED
+  - Backend: Implemented `POST /api/organizations/:orgId/workspaces` creation mode with owner/admin RBAC, rate limiting, slug validation, atomic workspace creation, organization linking, and audit logging.
+  - Frontend: Added `CreateWorkspaceModal` and `Create Workspace` action in `OrganizationWorkspacesList` for direct workspace creation from the organization UI.
+  - API Client: Added `createOrganizationWorkspaceNew` helper.
+  - Documentation & Tests: Updated organization README, added backend 201/403/400/409 integration coverage, and verified clean build/typecheck/test gates.
 ## Future Phases
 ---
 ### ARCHIVED: Completed Historical Milestones
