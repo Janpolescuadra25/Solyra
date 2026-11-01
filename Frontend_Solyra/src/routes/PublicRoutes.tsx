@@ -50,12 +50,9 @@ export const LandingPage: React.FC = () => {
           >
             Create Your Account <ArrowRight className="w-4 h-4" />
           </Link>
-          <Link
-            to="/chat"
+          <Link to="/signup"
             className="w-full sm:w-auto flex items-center justify-center gap-2 border border-slate-700 hover:border-slate-600 bg-slate-900/60 hover:bg-slate-900 text-slate-200 font-medium px-6 py-3 rounded-xl transition-all"
-          >
-            Explore Guest Chat
-          </Link>
+          >Get Started Free</Link>
         </div>
       </main>
 
