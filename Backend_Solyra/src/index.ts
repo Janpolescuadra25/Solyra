@@ -2048,6 +2048,141 @@ export async function handleOrganizationRoutes(
       return true;
     }
 
+    if (req.method === 'GET' && orgPathParts.length === 4 && orgPathParts[3] === 'workspaces') {
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin', 'member'], orgId);
+      if (!authOk) {
+        return true;
+      }
+
+      const org = await bundle.organizations.findById(orgId);
+      if (!org) {
+        sendJsonResponse(res, 404, { success: false, error: 'Organization not found' });
+        return true;
+      }
+
+      const workspaces = await bundle.workspaces.listByOrganization(orgId);
+      sendJsonResponse(res, 200, { success: true, workspaces });
+      return true;
+    }
+
+    if (req.method === 'POST' && orgPathParts.length === 4 && orgPathParts[3] === 'workspaces') {
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin'], orgId);
+      if (!authOk || !req.session) {
+        return true;
+      }
+
+      if (!validateOrigin(req, res)) {
+        return true;
+      }
+
+      const rateLimit = rateLimiter.check(`${req.socket.remoteAddress || 'unknown'}:organization-workspace-link`);
+      if (!rateLimit.allowed) {
+        sendJsonResponse(res, 429, { success: false, error: 'Too many organization workspace link attempts. Please try again later.', retryAfterSeconds: rateLimit.retryAfterSeconds });
+        return true;
+      }
+
+      try {
+        const body = await readJsonRequest(req, 1024 * 1024);
+        if (!isRecord(body) || typeof body.workspaceId !== 'string') {
+          sendJsonResponse(res, 400, { success: false, error: 'workspaceId is required' });
+          return true;
+        }
+
+        const workspaceId = body.workspaceId.trim();
+        if (!uuidRegex.test(workspaceId)) {
+          sendJsonResponse(res, 400, { success: false, error: 'Valid workspaceId UUID is required' });
+          return true;
+        }
+
+        const organization = await bundle.organizations.findById(orgId);
+        if (!organization) {
+          sendJsonResponse(res, 404, { success: false, error: 'Organization not found' });
+          return true;
+        }
+
+        const workspace = await bundle.workspaces.findById(workspaceId);
+        if (!workspace) {
+          sendJsonResponse(res, 404, { success: false, error: 'Workspace not found' });
+          return true;
+        }
+
+        const linkedWorkspaceIds = await bundle.organizations.listWorkspaces(orgId);
+        if (linkedWorkspaceIds.includes(workspaceId)) {
+          sendJsonResponse(res, 409, { success: false, error: 'Workspace is already linked to this organization' });
+          return true;
+        }
+
+        const alreadyLinkedElsewhere = await bundle.organizations.getWorkspaceOrganization(workspaceId);
+        if (alreadyLinkedElsewhere && alreadyLinkedElsewhere.id !== orgId) {
+          sendJsonResponse(res, 409, { success: false, error: 'Workspace is already linked to another organization' });
+          return true;
+        }
+
+        const link = await bundle.organizations.linkWorkspace({ organizationId: orgId, workspaceId });
+        if (bundle.audit) {
+          await bundle.audit.recordEvent({
+            action: 'organization.workspace_linked',
+            userId: req.session.userId,
+            metadata: { organizationId: orgId, workspaceId },
+          });
+        }
+
+        sendJsonResponse(res, 201, { success: true, link });
+        return true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to link workspace';
+        const duplicate = message.toLowerCase().includes('duplicate') || message.toLowerCase().includes('already linked') || message.toLowerCase().includes('unique');
+        sendJsonResponse(res, duplicate ? 409 : 500, { success: false, error: duplicate ? 'Workspace is already linked to this organization' : message });
+        return true;
+      }
+    }
+
+    if (req.method === 'DELETE' && orgPathParts.length === 5 && orgPathParts[3] === 'workspaces') {
+      const targetWorkspaceId = orgPathParts[4];
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin'], orgId);
+      if (!authOk || !req.session) {
+        return true;
+      }
+
+      if (!validateOrigin(req, res)) {
+        return true;
+      }
+
+      if (!uuidRegex.test(targetWorkspaceId)) {
+        sendJsonResponse(res, 400, { success: false, error: 'Valid workspaceId UUID is required' });
+        return true;
+      }
+
+      const rateLimit = rateLimiter.check(`${req.socket.remoteAddress || 'unknown'}:organization-workspace-unlink`);
+      if (!rateLimit.allowed) {
+        sendJsonResponse(res, 429, { success: false, error: 'Too many organization workspace unlink attempts. Please try again later.', retryAfterSeconds: rateLimit.retryAfterSeconds });
+        return true;
+      }
+
+      const linkedWorkspaceIds = await bundle.organizations.listWorkspaces(orgId);
+      if (!linkedWorkspaceIds.includes(targetWorkspaceId)) {
+        sendJsonResponse(res, 404, { success: false, error: 'Workspace link not found in this organization' });
+        return true;
+      }
+
+      const removed = await bundle.organizations.unlinkWorkspace(orgId, targetWorkspaceId);
+      if (!removed) {
+        sendJsonResponse(res, 404, { success: false, error: 'Workspace link not found in this organization' });
+        return true;
+      }
+
+      if (bundle.audit) {
+        await bundle.audit.recordEvent({
+          action: 'organization.workspace_unlinked',
+          userId: req.session.userId,
+          metadata: { organizationId: orgId, workspaceId: targetWorkspaceId },
+        });
+      }
+
+      sendJsonResponse(res, 200, { success: true, removed: true, organizationId: orgId, workspaceId: targetWorkspaceId });
+      return true;
+    }
+
     if (req.method === 'GET' && orgPathParts.length === 4 && orgPathParts[3] === 'members') {
       const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin', 'member'], orgId);
       if (!authOk) {

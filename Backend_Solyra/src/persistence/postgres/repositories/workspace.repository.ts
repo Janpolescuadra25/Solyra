@@ -8,6 +8,7 @@ export interface IWorkspaceRepository {
   update(id: string, updates: Partial<Workspace>): Promise<Workspace | null>;
   delete(id: string): Promise<boolean>;
   listByOwner(ownerId: string): Promise<Workspace[]>;
+  listByOrganization(organizationId: string): Promise<Workspace[]>;
   addMember(member: WorkspaceMembership): Promise<WorkspaceMembership>;
   removeMember(workspaceId: string, userId: string): Promise<boolean>;
   listMembers(workspaceId: string): Promise<WorkspaceMembership[]>;
@@ -116,6 +117,18 @@ export class PostgresWorkspaceRepository implements IWorkspaceRepository {
   async listByOwner(ownerId: string): Promise<Workspace[]> {
     const res = await this.pool.query('SELECT * FROM workspaces WHERE owner_id = $1 ORDER BY created_at ASC', [ownerId]);
     return res.rows.map((row) => this.mapWorkspace(row));
+  }
+
+  async listByOrganization(organizationId: string): Promise<Workspace[]> {
+    const query = `
+      SELECT w.*
+      FROM workspaces w
+      INNER JOIN organization_workspaces ow ON w.id = ow.workspace_id
+      WHERE ow.organization_id = $1
+      ORDER BY ow.assigned_at ASC
+    `;
+    const result = await this.pool.query(query, [organizationId]);
+    return result.rows.map((row) => this.mapWorkspace(row));
   }
 
   async addMember(member: WorkspaceMembership): Promise<WorkspaceMembership> {

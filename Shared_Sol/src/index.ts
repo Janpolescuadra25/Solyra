@@ -381,6 +381,7 @@ export interface IWorkspaceRepository {
   findBySlug(slug: string): Promise<Workspace | null>;
   create(workspace: Omit<Workspace, 'id' | 'createdAt' | 'updatedAt'>): Promise<Workspace>;
   getMembers(workspaceId: string): Promise<WorkspaceMembership[]>;
+  listByOrganization(organizationId: string): Promise<Workspace[]>;
 }
 
 export interface IChatRepository {

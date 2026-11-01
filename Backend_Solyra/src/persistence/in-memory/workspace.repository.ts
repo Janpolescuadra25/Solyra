@@ -7,6 +7,11 @@ export class InMemoryWorkspaceRepository {
   private workspaces = new Map<string, TenantWorkspace>();
   private slugIndex = new Map<string, string>();
   private memberships = new Map<string, TenantWorkspaceMembership[]>();
+  private organizationRepository?: { listWorkspaces: (organizationId: string) => Promise<string[]> };
+
+  constructor(organizationRepository?: { listWorkspaces: (organizationId: string) => Promise<string[]> }) {
+    this.organizationRepository = organizationRepository;
+  }
 
   async create(workspace: TenantWorkspace): Promise<RepositoryResult<TenantWorkspace>> {
     if (this.workspaces.has(workspace.id)) {
@@ -46,6 +51,15 @@ export class InMemoryWorkspaceRepository {
     }
 
     return { success: true, data: structuredClone(workspace) };
+  }
+
+  async listByOrganization(organizationId: string): Promise<Workspace[]> {
+    const linkedIds = this.organizationRepository ? await this.organizationRepository.listWorkspaces(organizationId) : [];
+    const linkedSet = new Set(linkedIds);
+
+    return Array.from(this.workspaces.values())
+      .filter((workspace) => workspace.tenantId === organizationId || linkedSet.has(workspace.id))
+      .map(({ tenantId: _tenantId, ...workspace }) => workspace as Workspace);
   }
 
   async addMember(membership: TenantWorkspaceMembership): Promise<RepositoryResult<void>> {
