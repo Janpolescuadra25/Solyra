@@ -20,8 +20,16 @@
   - Documentation: `Frontend_Solyra/src/components/organization/README.md`.
   - Added the organization switcher, organization list/detail routes, AuthContext organization state, and `X-Organization-ID` request propagation.
   - Verified with a clean frontend build and 98/98 backend tests.
-- [ ] **Step 15 Phase 1: Organization Workspace Linking & Isolation** - ACTIVE NEXT
-  - Bind workspace creation and access to active organization membership and persist organization-to-workspace links.
+- [x] **Step 15 Phase 1: Organization Workspace Linking & Isolation** - COMPLETED (commit e8c7a3f6b7fe1a9b33f00bb1a42f0da99a1133ba)
+  - Persisted organization-to-workspace links via the `organization_workspaces` join table.
+  - Extended `IWorkspaceRepository` and implementations with `listByOrganization`.
+  - Mounted REST endpoints: `GET/POST/DELETE /api/organizations/:orgId/workspaces` with RBAC, existence checks, 409 conflict detection, and rate limiting.
+  - Verified with 99/99 backend tests passing and a clean frontend build.
+  - Documentation: `Backend_Solyra/src/persistence/STEP15_PHASE1_README.md`.
+
+
+- [ ] **Step 15 Phase 2: Frontend Organization Workspace UI** - ACTIVE NEXT
+  - Prepare the organization workspace management views, workspace linking controls, and org-scoped state wiring for the frontend.
 
 ## Future Phases
 ---
