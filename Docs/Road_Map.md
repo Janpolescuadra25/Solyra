@@ -12,6 +12,16 @@
   - Authorization guards allowing workspace owners and admins to issue invitations
 
 ## ARCHIVED: Completed Historical Milestones
+
+### Milestone: Layout Separation & Database Connection Resilience
+- **Commit:** 6be2d4f0fae320c15f0dfe035eec2da4b7fbaccd
+- **Scope Completed:**
+  1. Created Frontend_Solyra/src/components/layout/PublicLayout.tsx providing a dedicated, unauthenticated header with navigation links (Sign In, Get Started) and responsive mobile menu.
+  2. Restructured Frontend_Solyra/src/App.tsx routes into clean public (PublicLayout) and authenticated (AuthGuard + ShellLayout) branches, eliminating duplicate navbar rendering on the landing page while preserving top-level standalone /chat workspace access.
+  3. Enhanced Backend_Solyra/src/persistence/postgres/pool.ts to parse individual PGHOST, PGPORT, PGUSER, PGPASSWORD, and PGDATABASE environment variables with special-character password safety and SSL preservation.
+  4. Enhanced /auth/login and /auth/signup in Backend_Solyra/src/index.ts with PostgreSQL connection error detection returning structured 503 Service Unavailable (DATABASE_UNAVAILABLE).
+  5. Implemented transactional database initializer Backend_Solyra/src/persistence/postgres/init-db.ts and registered "db:init" in Backend_Solyra/package.json.
+  6. Updated Backend_Solyra/.env.example with standard PostgreSQL environment variables.
 - **Step 16 Phase 1:** Organization Workspace Creation REST APIs and UI [COMPLETED]
 - **Step 16 Phase 2:** Organization Workspace Scoping and Isolation Guards [COMPLETED]
 - **Step 16 Phase 3:** Organization Workspace Member Permissions & Role Inheritance [COMPLETED] (108 tests passing)

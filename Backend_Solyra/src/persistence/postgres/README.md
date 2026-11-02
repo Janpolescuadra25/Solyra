@@ -1,57 +1,29 @@
-# Solyra PostgreSQL Persistence Engine
+# PostgreSQL Persistence Subsystem
 
-## Architecture & Overview
-This subsystem provides the relational persistence driver for Solyra using Node.js and PostgreSQL 18. It implements connection pooling with SSL support, declarative SQL schema migrations, and relational repository adapters.
+## Connection Pool Configuration (pool.ts)
+The PostgreSQL connection pool provides resilient connectivity supporting both consolidated connection strings and individual environment parameters:
 
-## Implemented Baseline
-- **Connection Pool (`pool.ts`)**: Exports `createPostgresPool`, `getPgPool` (singleton accessor), and `checkPostgresHealth` with production SSL fallback.
-- **Relational Schema (`schema.sql`, `init_db.sql`, `rollback_schema.sql`)**: Defines tables for `users`, `workspaces`, `chat_sessions`, `chat_messages`, `knowledge_nodes`, and `memory_records`.
-- **Native Vector Function**: Adds a PostgreSQL 18 `cosine_similarity(a JSONB, b JSONB)` PL/pgSQL fallback for JSONB embedding comparison when `pgvector` is not installed.
-- **Repository Adapters**:
-  - `PostgresUserRepository`: CRUD and lookup by email for user entities.
-  - `PostgresWorkspaceRepository`: Workspace membership and slug resolution.
-  - `PostgresChatRepository`: Session management and message history append/retrieval.
-  - `PostgresKnowledgeRepository`: Knowledge node storage with JSONB metadata and semantic similarity search.
-  - `PostgresMemoryRepository`: Tenant-scoped memory storage keyed by `(tenant_id, tier, key)` with salience search and delete semantics.
-- **Semantic Search API**: `searchBySemanticSimilarity(workspaceId, queryEmbedding, minSimilarity = 0.7, limit = 10)` returns `SemanticSearchResult[]` sorted by descending similarity inside the current workspace.
-- **Runtime Wiring**: `Backend_Solyra/src/index.ts` now performs a real `checkPostgresHealth(getPgPool())` in `/ready` and reports `storage: 'connected' | 'disconnected'` based on the live pool state.
-- **Verification Suite**: `Backend_Solyra/test/postgres.verify.ts` validates health checks, CRUD, memory persistence, and semantic similarity filtering for multi-tenant workspaces.
+1. **DATABASE_URL Support:** If DATABASE_URL is provided, the pool initializes directly with the connection URI.
+2. **Individual PG* Parameters:** If DATABASE_URL is absent or connection fallback is triggered, the pool reads:
+   - PGHOST (default: localhost)
+   - PGPORT (default: 5432)
+   - PGUSER (default: postgres)
+   - PGPASSWORD
+   - PGDATABASE (default: Solyra_db)
+3. **Special Character Safety:** Individual connection parameters are passed directly to pg.Pool without manual string interpolation, preventing connection URI parsing errors caused by special characters in passwords.
+4. **SSL Configuration:** SSL is disabled for localhost/127.0.0.1 development and enforced (ejectUnauthorized: true) in production environments.
 
-## Semantic Search Contract
-```typescript
-searchBySemanticSimilarity(
-  workspaceId: string,
-  queryEmbedding: number[],
-  minSimilarity?: number,
-  limit?: number,
-): Promise<SemanticSearchResult[]>
-```
+## Database Initialization (init-db.ts)
+A dedicated schema initialization utility is available via npm script:
+`ash
+npm run db:init
+`
+This utility:
+- Tests database connectivity.
+- Reads schema.sql and executes table/index creation transactionally.
+- Reports table inventory upon completion.
 
-- `workspaceId` must be a non-empty string.
-- `queryEmbedding` must be a non-empty number array.
-- `minSimilarity` must be a number between `-1.0` and `1.0`.
-- `limit` must be a positive integer.
-- Each result includes the matching `KnowledgeNode` plus a `similarity` score.
-
-## Status: COMPLETE (Phase 3.4 Vector Search Verified)
-- **Verified Tests**: Semantic search, workspace isolation, and validation guards are covered in `Backend_Solyra/test/postgres.verify.ts`.
-
-## PostgreSQL Test Safety Guard (`guard.ts`)
-**Status:** DONE - LAST UPDATED: 2026-10-16
-
-To prevent accidental modification or destructive testing against the application database (`Solyra_db`), all PostgreSQL verification and integration scripts must use `guard.ts`:
-- **`validatePostgresTestSafety(options)`**:
-  - Requires `NODE_ENV === 'test'`.
-  - Requires an explicit, non-empty `SOLYRA_TEST_DB_URL` environment variable.
-  - Rejects connection strings pointing to `solyra_db` or empty database names.
-  - Returns the normalized target test database name.
-- **`assertConnectedToTestDatabase(client, expectedDbName)`**:
-  - Queries `SELECT current_database()` upon connection.
-  - Asserts that the connected database strictly matches `expectedDbName` and is not `solyra_db`.
-  - Aborts immediately before any table creation, schema modification, or write.
-- **Integration Test Execution:**
-  - Standard unit tests (`pnpm test`) do not connect to PostgreSQL.
-  - PostgreSQL integration testing is strictly opt-in via:
-    ```bash
-    pnpm run test:integration:pg
-    ```
+## Error Handling & Service Availability
+Authentication endpoints (/auth/login, /auth/signup) in src/index.ts intercept PostgreSQL connection and schema error codes (ECONNREFUSED, ETIMEDOUT, ENOTFOUND, 28P01, 3D000, 42P01):
+- Connection or database unavailability errors return HTTP 503 Service Unavailable with structured code DATABASE_UNAVAILABLE.
+- Invalid credentials return HTTP 401 Unauthorized with structured code INVALID_CREDENTIALS.
