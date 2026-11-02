@@ -13,6 +13,7 @@
     "benchmark:step9.5": "tsx --test test/step9.5_scalability_benchmark.test.ts",
     "test:step9.5": "tsx --test test/step9.5_scalability_benchmark.test.ts",
     "db:seed": "tsx src/persistence/postgres/seed.ts",
+    "db:init": "tsx src/persistence/postgres/init-db.ts",
     "test:brainstem": "tsx ./test/brainstem.verify.ts",
     "test:persistence": "tsx ./test/persistence.verify.ts",
     "test:integration:pg": "tsx test/postgres.verify.ts",

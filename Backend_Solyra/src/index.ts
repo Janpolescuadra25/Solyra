@@ -1638,8 +1638,26 @@ const server = http.createServer(async (req, res) => {
       sendJsonResponse(res, 201, { success: true, ...result });
       return;
     } catch (error) {
+      console.error(`[Auth] Error processing ${requestPath}:`, error);
       const message = error instanceof Error ? error.message : 'Unable to create account';
       const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      const errCode = (error as any)?.code;
+      const errMsg = (error as any)?.message || '';
+      const dbErrorCodes = ['ECONNREFUSED', 'ENOTFOUND', '08001', '08006', '57P01', '3F000', '42P01', '3D000', '28P01'];
+      const isDbError =
+        (typeof errCode === 'string' && (dbErrorCodes.includes(errCode) || errCode.startsWith('08'))) ||
+        /(connection|database|relation|password|ECONNREFUSED|ENOTFOUND)/i.test(errMsg);
+
+      if (isDbError) {
+        sendJsonResponse(res, 503, {
+          success: false,
+          error: 'Database service unavailable or uninitialized',
+          message: 'Unable to connect to the database or required tables are missing. Please verify PostgreSQL service and initialize database schema.',
+          code: 'DATABASE_UNAVAILABLE',
+        });
+        return;
+      }
+
       sendJsonResponse(res, statusCode, { success: false, error: message });
       return;
     }
@@ -1674,8 +1692,26 @@ const server = http.createServer(async (req, res) => {
       sendJsonResponse(res, 200, { success: true, ...result });
       return;
     } catch (error) {
+      console.error(`[Auth] Error processing ${requestPath}:`, error);
       const message = error instanceof Error ? error.message : 'Login failed';
       const statusCode = error && typeof error === 'object' && 'statusCode' in error ? Number((error as { statusCode?: number }).statusCode ?? 500) : 500;
+      const errCode = (error as any)?.code;
+      const errMsg = (error as any)?.message || '';
+      const dbErrorCodes = ['ECONNREFUSED', 'ENOTFOUND', '08001', '08006', '57P01', '3F000', '42P01', '3D000', '28P01'];
+      const isDbError =
+        (typeof errCode === 'string' && (dbErrorCodes.includes(errCode) || errCode.startsWith('08'))) ||
+        /(connection|database|relation|password|ECONNREFUSED|ENOTFOUND)/i.test(errMsg);
+
+      if (isDbError) {
+        sendJsonResponse(res, 503, {
+          success: false,
+          error: 'Database service unavailable or uninitialized',
+          message: 'Unable to connect to the database or required tables are missing. Please verify PostgreSQL service and initialize database schema.',
+          code: 'DATABASE_UNAVAILABLE',
+        });
+        return;
+      }
+
       sendJsonResponse(res, statusCode, { success: false, error: message });
       return;
     }
