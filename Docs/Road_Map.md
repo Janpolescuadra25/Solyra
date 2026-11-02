@@ -2,12 +2,13 @@
 
 ## Current Phase
 ### Step 17: Workspace Invitations & Access Management
-#### Phase 1: Workspace Invitation System [ACTIVE NEXT]
-- **Status:** NOT STARTED
-- **Description:** Implement token-based email invitation system for workspace members, pending invitation tracking, expiration handling, and acceptance flows building on Step 16 Phase 3 member RBAC.
-- **Requirements:**
+#### Phase 1: Workspace Invitation System [COMPLETED]
+- **Status:** COMPLETED
+- **Description:** Implemented token-based workspace invitation system with pending tracking, expiration handling, RBAC enforcement, and acceptance flows building on Step 16 Phase 3 member RBAC.
+- **Verification:** Backend typecheck passed, backend suite passed (114 tests), frontend build passed.
+- **Requirements Delivered:**
   - Database schema for `workspace_invitations` with token hash, expiration, and role assignment
-  - REST endpoints for creating, revoking, and accepting workspace invitations
+  - REST endpoints for creating, revoking, listing, and accepting workspace invitations
   - Integration with email outbox and audit logging tables
   - Authorization guards allowing workspace owners and admins to issue invitations
 

@@ -16,6 +16,7 @@ import { ArousalLevel, CouncilMemberRole, SystemPriority, type HealthStatus, typ
 import { CouncilEngine } from './council/engine.js';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, getEffectiveWorkspaceRole, RateLimiter, requireOrgRole, requireWorkspaceRole } from './auth/middleware.js';
+import { generateSecureToken, hashToken } from './auth/utils.js';
 import { startRetentionPolicyCleaner } from './persistence/retention-cleaner.js';
 
 const PORT = parseInt(process.env.BACKEND_PORT || '4000', 10);
@@ -1987,6 +1988,71 @@ export async function handleWorkspaceRoutes(
   bundle: ReturnType<typeof createPostgresPersistence>,
   requestPath: string,
 ): Promise<boolean> {
+  if (req.method === 'POST' && requestPath.startsWith('/api/workspaces/invitations/accept/')) {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const token = requestPath.replace('/api/workspaces/invitations/accept/', '').trim();
+    if (!token || token.length !== 64) {
+      sendJsonResponse(res, 400, { success: false, error: 'INVALID_TOKEN', message: 'Malformed invitation token' });
+      return true;
+    }
+
+    const tokenHash = hashToken(token);
+    const invitation = await bundle.workspaceInvitations.findByTokenHash(tokenHash);
+    if (!invitation) {
+      sendJsonResponse(res, 404, { success: false, error: 'INVITATION_NOT_FOUND', message: 'Invitation does not exist' });
+      return true;
+    }
+
+    if (invitation.status === 'revoked') {
+      sendJsonResponse(res, 410, { success: false, error: 'INVITATION_REVOKED', message: 'This invitation has been revoked' });
+      return true;
+    }
+
+    if (invitation.status === 'accepted') {
+      sendJsonResponse(res, 409, { success: false, error: 'ALREADY_ACCEPTED', message: 'This invitation has already been accepted' });
+      return true;
+    }
+
+    if (new Date() > new Date(invitation.expiresAt)) {
+      await bundle.workspaceInvitations.updateStatus(invitation.id, 'expired');
+      sendJsonResponse(res, 410, { success: false, error: 'INVITATION_EXPIRED', message: 'This invitation has expired' });
+      return true;
+    }
+
+    const sessionUserId = req.session.userId;
+    if (!sessionUserId) {
+      sendJsonResponse(res, 401, { success: false, error: 'UNAUTHORIZED', message: 'Must be logged in to accept an invitation' });
+      return true;
+    }
+
+    await bundle.workspaces.addMember(invitation.workspaceId, sessionUserId, invitation.role);
+    await bundle.workspaceInvitations.updateStatus(invitation.id, 'accepted', new Date());
+
+    if (bundle.audit && typeof bundle.audit.recordEvent === 'function') {
+      await bundle.audit.recordEvent({
+        eventType: 'workspace.invitation.accepted',
+        userId: sessionUserId,
+        workspaceId: invitation.workspaceId,
+        details: {
+          invitationId: invitation.id,
+          role: invitation.role,
+          email: invitation.email,
+        },
+      });
+    }
+
+    sendJsonResponse(res, 200, {
+      success: true,
+      workspaceId: invitation.workspaceId,
+      role: invitation.role,
+    });
+    return true;
+  }
+
   const workspacePathParts = requestPath.split('/').filter(Boolean);
   if (!(workspacePathParts[0] === 'api' && workspacePathParts[1] === 'workspaces')) {
     return false;
@@ -2141,6 +2207,156 @@ export async function handleWorkspaceRoutes(
     }
 
     sendJsonResponse(res, 200, { success: true, data: { workspaceId, userId: targetUserId, removed: true } });
+    return true;
+  }
+
+  if (req.method === 'POST' && workspacePathParts.length === 4 && workspacePathParts[3] === 'invitations') {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const roleCheck = await requireWorkspaceRole(req, res, bundle, ['owner', 'admin'], workspaceId);
+    if (!roleCheck) {
+      return true;
+    }
+
+    let body: unknown;
+    try {
+      body = await readJsonRequest(req, 1024 * 1024);
+    } catch {
+      sendJsonResponse(res, 400, { success: false, error: 'Request body must be valid JSON' });
+      return true;
+    }
+
+    if (!isRecord(body) || typeof body.email !== 'string' || !body.email.includes('@')) {
+      sendJsonResponse(res, 400, { success: false, error: 'INVALID_EMAIL', message: 'A valid email address is required' });
+      return true;
+    }
+
+    const requestedRole = (typeof body.role === 'string' ? body.role.trim().toLowerCase() : 'member');
+    const allowedRoles = ['admin', 'member', 'viewer'] as const;
+    if (!allowedRoles.includes(requestedRole as typeof allowedRoles[number])) {
+      sendJsonResponse(res, 400, { success: false, error: 'INVALID_ROLE', message: 'Role must be admin, member, or viewer' });
+      return true;
+    }
+
+    const existing = await bundle.workspaceInvitations.findByWorkspaceAndEmail(workspaceId, body.email);
+    if (existing) {
+      sendJsonResponse(res, 409, { success: false, error: 'INVITATION_ALREADY_EXISTS', message: 'An active invitation for this email already exists' });
+      return true;
+    }
+
+    const rawToken = generateSecureToken(32);
+    const tokenHash = hashToken(rawToken);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const invitation = await bundle.workspaceInvitations.create({
+      workspaceId,
+      email: body.email,
+      role: requestedRole as 'admin' | 'member' | 'viewer',
+      tokenHash,
+      invitedBy: req.session.userId,
+      expiresAt,
+    });
+
+    if (bundle.emailOutbox && typeof bundle.emailOutbox.queueEmail === 'function') {
+      await bundle.emailOutbox.queueEmail({
+        recipientEmail: invitation.email,
+        subject: 'You have been invited to join a workspace on Solyra',
+        template: 'workspace-invitation',
+        payload: {
+          workspaceId,
+          invitationId: invitation.id,
+          role: invitation.role,
+          token: rawToken,
+        },
+      });
+    }
+
+    if (bundle.audit && typeof bundle.audit.recordEvent === 'function') {
+      await bundle.audit.recordEvent({
+        eventType: 'workspace.invitation.created',
+        userId: req.session.userId,
+        workspaceId,
+        details: {
+          invitationId: invitation.id,
+          email: invitation.email,
+          role: invitation.role,
+        },
+      });
+    }
+
+    sendJsonResponse(res, 201, {
+      success: true,
+      invitation: {
+        id: invitation.id,
+        workspaceId: invitation.workspaceId,
+        email: invitation.email,
+        role: invitation.role,
+        status: invitation.status,
+        expiresAt: invitation.expiresAt,
+        createdAt: invitation.createdAt,
+      },
+      token: rawToken,
+    });
+    return true;
+  }
+
+  if (req.method === 'GET' && workspacePathParts.length === 4 && workspacePathParts[3] === 'invitations') {
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const roleCheck = await requireWorkspaceRole(req, res, bundle, ['owner', 'admin'], workspaceId);
+    if (!roleCheck) {
+      return true;
+    }
+
+    const url = req.url ? new URL(req.url, 'http://localhost') : null;
+    const statusQuery = url?.searchParams.get('status') ?? undefined;
+    const invitations = await bundle.workspaceInvitations.listByWorkspace(workspaceId, statusQuery);
+    sendJsonResponse(res, 200, {
+      success: true,
+      invitations: invitations.map(({ tokenHash, ...rest }) => rest),
+    });
+    return true;
+  }
+
+  if (req.method === 'DELETE' && workspacePathParts.length === 5 && workspacePathParts[3] === 'invitations') {
+    const invitationId = workspacePathParts[4];
+    if (!invitationId) {
+      return false;
+    }
+
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const roleCheck = await requireWorkspaceRole(req, res, bundle, ['owner', 'admin'], workspaceId);
+    if (!roleCheck) {
+      return true;
+    }
+
+    const revoked = await bundle.workspaceInvitations.revoke(invitationId);
+    if (!revoked) {
+      sendJsonResponse(res, 404, { success: false, error: 'INVITATION_NOT_FOUND', message: 'Pending invitation not found' });
+      return true;
+    }
+
+    if (bundle.audit && typeof bundle.audit.recordEvent === 'function') {
+      await bundle.audit.recordEvent({
+        eventType: 'workspace.invitation.revoked',
+        userId: req.session.userId,
+        workspaceId,
+        details: {
+          invitationId,
+        },
+      });
+    }
+
+    sendJsonResponse(res, 200, { success: true });
     return true;
   }
 

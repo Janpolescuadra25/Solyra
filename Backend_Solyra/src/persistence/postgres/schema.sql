@@ -100,6 +100,24 @@ CREATE TABLE IF NOT EXISTS workspace_members (
 CREATE INDEX IF NOT EXISTS idx_wm_workspace ON workspace_members(workspace_id);
 CREATE INDEX IF NOT EXISTS idx_wm_user ON workspace_members(user_id);
 
+-- Workspace Invitations (Step 17 Phase 1)
+CREATE TABLE IF NOT EXISTS workspace_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id VARCHAR(64) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
+    token_hash VARCHAR(64) NOT NULL UNIQUE,
+    invited_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'revoked', 'expired')),
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    accepted_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_workspace_id ON workspace_invitations(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_token_hash ON workspace_invitations(token_hash);
+CREATE INDEX IF NOT EXISTS idx_workspace_invitations_email_workspace ON workspace_invitations(email, workspace_id);
+
 CREATE TABLE IF NOT EXISTS chat_sessions (
     id VARCHAR(64) PRIMARY KEY,
     workspace_id VARCHAR(64) NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

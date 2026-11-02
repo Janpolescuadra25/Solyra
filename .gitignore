@@ -11,6 +11,7 @@ Docs/*
 !Docs/implementations/
 Docs/implementations/*
 !Docs/implementations/step16_phase3_organization_workspace_member_permissions.md
+!Docs/implementations/step17_phase1_workspace_invitations.md
 *.docx
 *.pdf
 *.png
