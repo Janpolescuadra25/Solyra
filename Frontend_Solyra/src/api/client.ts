@@ -182,6 +182,34 @@ export interface ApiOrganizationMember {
   user?: { id: string; email: string; displayName?: string };
 }
 
+export type WorkspaceInvitationRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'owner' | 'admin' | 'member';
+export type WorkspaceInvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED' | 'pending' | 'accepted' | 'revoked' | 'expired';
+
+export interface WorkspaceInvitation {
+  id: string;
+  workspaceId: string;
+  email: string;
+  role: WorkspaceInvitationRole;
+  status: WorkspaceInvitationStatus;
+  token?: string;
+  invitedBy: string;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface CreateInvitationRequest {
+  email: string;
+  role: 'OWNER' | 'ADMIN' | 'MEMBER';
+  expiresInDays?: number;
+}
+
+export interface CreateInvitationResponse {
+  invitation: WorkspaceInvitation;
+  token: string;
+  inviteUrl?: string;
+}
+
 const unwrap = <T,>(data: any): T => data?.data ?? data;
 export async function getOrganizations(): Promise<Organization[]> {
   const response = await client.get('/api/organizations');
@@ -219,6 +247,26 @@ export async function createOrganizationWorkspace(orgId: string, workspaceId: st
   const response = await client.post(`/api/organizations/${encodeURIComponent(orgId)}/workspaces`, { workspaceId });
   return response.data?.workspace ?? response.data?.data ?? null;
 }
+
+export const createWorkspaceInvitation = async (workspaceId: string, data: CreateInvitationRequest): Promise<CreateInvitationResponse> => {
+  const res = await client.post(`/api/workspaces/${encodeURIComponent(workspaceId)}/invitations`, data);
+  return res.data;
+};
+
+export const listWorkspaceInvitations = async (workspaceId: string): Promise<{ invitations: WorkspaceInvitation[] }> => {
+  const res = await client.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/invitations`);
+  return res.data ?? { invitations: [] };
+};
+
+export const revokeWorkspaceInvitation = async (workspaceId: string, invitationId: string): Promise<{ success: boolean; message: string }> => {
+  const res = await client.delete(`/api/workspaces/${encodeURIComponent(workspaceId)}/invitations/${encodeURIComponent(invitationId)}`);
+  return res.data;
+};
+
+export const acceptWorkspaceInvitation = async (token: string): Promise<{ success: boolean; workspaceId: string; role: string; message: string }> => {
+  const res = await client.post(`/api/workspaces/invitations/accept/${encodeURIComponent(token)}`);
+  return res.data;
+};
 
 export const createOrganizationWorkspaceNew = async (
   organizationId: string,

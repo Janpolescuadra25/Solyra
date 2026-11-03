@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { client } from '../api/client';
+import { acceptWorkspaceInvitation, client } from '../api/client';
 import { Shield, Sparkles, AlertCircle, CheckCircle, ArrowRight, Loader2 } from 'lucide-react';
 
 export const LandingPage: React.FC = () => {
@@ -409,6 +409,120 @@ export const ResetPasswordPage: React.FC = () => {
             {isSubmitting ? 'Resetting password...' : 'Update Password'}
           </button>
         </form>
+      </div>
+    </div>
+  );
+};
+
+export const InvitationAcceptancePage: React.FC = () => {
+  const { token } = useParams<{ token: string }>();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
+  const [message, setMessage] = useState<string>('');
+  const [role, setRole] = useState<string>('member');
+
+  const handleAccept = async () => {
+    if (!token) {
+      setStatus('error');
+      setMessage('The invitation link is missing a valid token.');
+      return;
+    }
+
+    setStatus('processing');
+    setMessage('Accepting your workspace invitation...');
+
+    try {
+      const response = await acceptWorkspaceInvitation(token);
+      setStatus('success');
+      setRole(response.role || 'member');
+      setMessage(response.message || `You have been added to the workspace as ${response.role || 'member'}.`);
+    } catch (error: any) {
+      const apiMessage = error?.response?.data?.message || error?.response?.data?.error || error?.message || 'Unable to accept this invitation right now.';
+      setStatus('error');
+      setMessage(apiMessage);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center px-4 py-12">
+      <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-xl text-center">
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <Sparkles className="w-6 h-6 text-indigo-400" />
+          <span className="font-bold text-2xl tracking-tight text-white">Solyra</span>
+        </div>
+
+        <h2 className="text-xl font-bold text-slate-100 mb-2">Workspace Invitation</h2>
+        <p className="text-sm text-slate-400 mb-6">Accept your invitation and join the workspace with the assigned access level.</p>
+
+        {status === 'idle' && (
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-700 bg-slate-950/50 p-4 text-left">
+              <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Invitation token</p>
+              <p className="mt-2 break-all text-sm text-slate-200">{token || 'Missing token'}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleAccept()}
+              className="w-full py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg text-sm transition-colors inline-flex items-center justify-center gap-2"
+            >
+              Accept Invitation
+            </button>
+          </div>
+        )}
+
+        {status === 'processing' && (
+          <div className="py-8 flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 text-indigo-400 animate-spin" />
+            <p className="text-sm text-slate-300">{message}</p>
+          </div>
+        )}
+
+        {status === 'success' && (
+          <div className="space-y-4 py-6">
+            <CheckCircle className="mx-auto w-12 h-12 text-emerald-400" />
+            <p className="text-sm text-emerald-300">{message}</p>
+            <div className="rounded-lg border border-emerald-700/50 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+              Access role: <span className="font-semibold capitalize">{role}</span>
+            </div>
+            <div className="flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Go to Dashboard
+              </button>
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-lg text-sm font-medium transition-colors"
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {status === 'error' && (
+          <div className="space-y-4 py-6">
+            <AlertCircle className="mx-auto w-12 h-12 text-rose-400" />
+            <p className="text-sm text-rose-300">{message}</p>
+            <div className="flex justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => void handleAccept()}
+                className="inline-flex items-center justify-center px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Try Again
+              </button>
+              <Link
+                to="/login"
+                className="inline-flex items-center justify-center px-4 py-2 border border-slate-700 hover:bg-slate-800 text-slate-300 rounded-lg text-sm font-medium transition-colors"
+              >
+                Return to Login
+              </Link>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

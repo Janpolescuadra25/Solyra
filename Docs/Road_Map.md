@@ -12,6 +12,15 @@
   - Integration with email outbox and audit logging tables
   - Authorization guards allowing workspace owners and admins to issue invitations
 
+#### Phase 2: Frontend Workspace Invitation Management UI [COMPLETED]
+- **Status:** COMPLETED
+- **Description:** Added the workspace invitation management tab, public acceptance route, API client wrappers, and role-aware invite controls for owners and admins.
+- **Verification:** Frontend production build passes with public invitation acceptance route (/invitations/accept/:token) mounted under PublicLayout and WorkspaceInvitationsTab integrated into OrganizationDetailPage.
+
+### Step 18: Workspace Collaboration & Access Policies
+- **Status:** PENDING
+- **Description:** Extend the workspace control model with advanced sharing policies, role review workflows, and invite lifecycle enforcement beyond the initial management surface.
+
 ## ARCHIVED: Completed Historical Milestones
 
 ### Milestone: Layout Separation & Database Connection Resilience

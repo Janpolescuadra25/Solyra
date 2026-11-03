@@ -11,6 +11,7 @@ import {
   ForgotPasswordPage,
   ResetPasswordPage,
   VerifyEmailPage,
+  InvitationAcceptancePage,
 } from './routes/PublicRoutes';
 import {
   DashboardPage,
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
+          <Route path="/invitations/accept/:token" element={<InvitationAcceptancePage />} />
         </Route>
 
         <Route path="/chat" element={<AuthGuard><ChatWorkspacePage /></AuthGuard>} />
