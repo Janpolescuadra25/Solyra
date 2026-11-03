@@ -12,6 +12,7 @@ import {
   getOrganizationMembers,
   getOrganizationWorkspaces,
   getOrganizations,
+  listWorkspaceMembers,
   updateOrganizationMemberRole,
 } from '../api/client';
 
@@ -89,7 +90,7 @@ export const OrganizationsListPage: React.FC = () => {
 
 export const OrganizationDetailPage: React.FC = () => {
   const { orgId } = useParams<{ orgId: string }>();
-  const { userOrgRole } = useAuth();
+  const { user, userOrgRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
   const activeTab: TabType = rawTab === 'workspaces' ? 'workspaces' : rawTab === 'invitations' ? 'invitations' : 'members';
@@ -98,6 +99,7 @@ export const OrganizationDetailPage: React.FC = () => {
   const [members, setMembers] = useState<ApiOrganizationMember[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
+  const [workspaceUserRole, setWorkspaceUserRole] = useState<string>('member');
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState<OrganizationRole>('member');
 
@@ -133,13 +135,47 @@ export const OrganizationDetailPage: React.FC = () => {
   useEffect(() => {
     if (workspaces.length === 0) {
       setSelectedWorkspaceId('');
+      setWorkspaceUserRole(userOrgRole || 'member');
       return;
     }
 
     if (!workspaces.some((workspace) => workspace.id === selectedWorkspaceId)) {
       setSelectedWorkspaceId(workspaces[0].id);
     }
-  }, [selectedWorkspaceId, workspaces]);
+  }, [selectedWorkspaceId, workspaces, userOrgRole]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!selectedWorkspaceId) {
+      setWorkspaceUserRole(userOrgRole || 'member');
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void listWorkspaceMembers(selectedWorkspaceId)
+      .then((membersList) => {
+        if (!isMounted) return;
+        const currentMember = membersList.find((member) => member.userId === user?.id);
+        if (currentMember) {
+          setWorkspaceUserRole(currentMember.role);
+        } else if (userOrgRole === 'owner' || userOrgRole === 'admin') {
+          setWorkspaceUserRole(userOrgRole);
+        } else {
+          setWorkspaceUserRole('member');
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setWorkspaceUserRole(userOrgRole || 'member');
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedWorkspaceId, user?.id, userOrgRole]);
 
   if (!org) {
     return <p>Loading organization…</p>;
@@ -204,7 +240,12 @@ export const OrganizationDetailPage: React.FC = () => {
             </div>
           )}
 
-          <WorkspaceInvitationsTab workspaceId={selectedWorkspaceId} userRole={userOrgRole} />
+          <WorkspaceInvitationsTab
+            workspaceId={selectedWorkspaceId}
+            userRole={userOrgRole}
+            currentUserId={user?.id}
+            workspaceUserRole={workspaceUserRole}
+          />
         </div>
       ) : (
         <>

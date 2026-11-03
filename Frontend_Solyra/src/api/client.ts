@@ -182,6 +182,20 @@ export interface ApiOrganizationMember {
   user?: { id: string; email: string; displayName?: string };
 }
 
+export interface WorkspaceMember {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  role: 'owner' | 'admin' | 'member' | 'viewer';
+  joinedAt: string;
+  user?: {
+    id: string;
+    email: string;
+    fullName?: string;
+    displayName?: string;
+  };
+}
+
 export type WorkspaceInvitationRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'owner' | 'admin' | 'member';
 export type WorkspaceInvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED' | 'pending' | 'accepted' | 'revoked' | 'expired';
 
@@ -227,6 +241,43 @@ export async function getOrganizationMembers(orgId: string): Promise<ApiOrganiza
 }
 export async function addOrganizationMember(orgId: string, data: { userId: string; role: OrganizationRole }): Promise<ApiOrganizationMember> {
   return unwrap<ApiOrganizationMember>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/members`, data)).data);
+}
+
+export async function listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {
+  try {
+    const response = await client.get(`/api/workspaces/${encodeURIComponent(workspaceId)}/members`);
+    return response.data?.members ?? [];
+  } catch (error: any) {
+    const message = error.response?.data?.error || error.message || 'Failed to list workspace members';
+    throw new Error(message);
+  }
+}
+
+export async function updateWorkspaceMemberRole(workspaceId: string, userId: string, newRole: string): Promise<WorkspaceMember> {
+  try {
+    const response = await client.put(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}/role`,
+      { role: newRole.toLowerCase() },
+    );
+    const member = response.data?.member as WorkspaceMember | undefined;
+    if (!member) {
+      throw new Error('Workspace member update did not return a member payload.');
+    }
+    return member;
+  } catch (error: any) {
+    const message = error.response?.data?.error || error.message || 'Failed to update member role';
+    throw new Error(message);
+  }
+}
+
+export async function removeWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
+  try {
+    await client.delete(`/api/workspaces/${encodeURIComponent(workspaceId)}/members/${encodeURIComponent(userId)}`);
+    return true;
+  } catch (error: any) {
+    const message = error.response?.data?.error || error.message || 'Failed to remove workspace member';
+    throw new Error(message);
+  }
 }
 
 // Organization Workspace endpoints (Step 15 Phase 2 + Step 16 Phase 1)
