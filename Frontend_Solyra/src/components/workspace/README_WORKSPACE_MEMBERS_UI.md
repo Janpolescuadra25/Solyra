@@ -1,6 +1,6 @@
 # Workspace Members UI Subsystem
 
-**STATUS: DONE (Step 18 Phase 2 Verified)**
+**Status**: DONE (Step 18 Phase 2 Verified, Baseline Commit: 2a522731c1afd467141437fec992974b1ebe9b70)**
 
 The workspace member management experience is now surfaced directly from the organization workspace view. It complements the backend membership policy engine by exposing role updates and removal actions in a safe, role-aware, accessible interface.
 
@@ -36,3 +36,4 @@ The component relies on the following frontend API methods:
 - Workspace-authored member guardrails in the UI.
 - Invitation workflow retention under the “Pending Invitations” tab.
 - Frontend production build and backend verification gates remain green.
+

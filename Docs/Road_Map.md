@@ -2,22 +2,29 @@
 
 ## Current Phase: Step 18 - Workspace Collaboration & Access Policies
 
-### Step 18: Workspace Collaboration & Access Policies
-- **Status:** [ACTIVE] (Phase 2 Frontend UI in progress)
+## Step 18: Workspace Collaboration & Access Policies [COMPLETED]
+- **Status:** [COMPLETED]
 - **Description:** Extend the workspace control model with advanced sharing policies, role review workflows, and invite lifecycle enforcement beyond the initial management surface.
 - **Milestone Mapping:** Completes the multi-user access foundation and establishes the security bridge into the next governance and collaboration milestones.
-- **Core Objectives:**
-  - Fine-grained permission policy matrix (Workspace Owner vs Admin vs Member vs Viewer)
-  - Cross-workspace resource isolation and tenant scoping guards
-  - Workspace member management UI: role promotion/demotion and member removal
-  - Comprehensive audit logging for workspace membership and access changes
-- **Phase 1 (Backend) - [COMPLETED]:** Verified baseline commit `436a49a1230cd18b2ec7edd7fce1964a060e5f5e`.
-  - Role update route `PUT /api/workspaces/:workspaceId/members/:userId/role` enforced owner/admin policy guardrails and audit logging.
-  - Repository parity completed for Postgres and in-memory workspace member implementations.
-  - Verification gate passed with 120/120 backend tests green and zero backend failures.
-- **Phase 2 (Frontend UI) - [ACTIVE]:** Member-management tab, client API integration, and access guardrails for self-role changes, self-removal, admin owner protection, and sole-owner demotion prevention.
+- **Phase 1: Backend Workspace Membership & Role Policy Engine [COMPLETED]** (Baseline Commit: `436a49a` / merged prior to `2a522731c1afd467141437fec992974b1ebe9b70`)
+  - Method parity implemented across `IWorkspaceRepository`, `InMemoryWorkspaceRepository`, and `PostgresWorkspaceRepository` (`getMember`, `removeMember`, `listMembers`, `updateMemberRole`).
+  - Added endpoint `PUT /api/workspaces/:workspaceId/members/:userId/role` with sole-owner demotion protection, self-role modification blocks, and admin restrictions against owner roles.
+  - Integrated audit event logging (`workspace.member.role_updated`).
+  - Added dedicated test suite `workspace-members.test.ts` (120/120 passing backend tests).
+  - Documented backend architecture in `Backend_Solyra/src/persistence/README_WORKSPACE_MEMBERS_BACKEND.md`.
+- **Phase 2: Frontend Workspace Member Management UI & API Client [COMPLETED]** (Baseline Commit: `2a522731c1afd467141437fec992974b1ebe9b70`)
+  - Added typed client API functions in `Frontend_Solyra/src/api/client.ts` (`listWorkspaceMembers`, `updateWorkspaceMemberRole`, `removeWorkspaceMember`) with comprehensive error handling.
+  - Updated `OrganizationRoutes.tsx` with workspace role resolution and prop pass-through (`currentUserId={user?.id}`, `workspaceUserRole={workspaceUserRole}`).
+  - Implemented accessible sub-tabs ("Current Members" and "Pending Invitations") in `WorkspaceInvitationsTab.tsx` with full ARIA accessibility (`role="tablist"`, `role="tab"`, `role="tabpanel"`, `aria-selected`).
+  - Implemented member table with role selector dropdowns, security guards, member removal confirmation dialogs, and loading state disables.
+  - Preserved 100% of preexisting invitation workflows.
+  - Documented UI architecture in `Frontend_Solyra/src/components/workspace/README_WORKSPACE_MEMBERS_UI.md`.
 - **Prerequisites:** Step 17 completed and verified (baseline commit `8d647376e8c932e479af81b3d92cc3ae81ffead9`)
 - **Target Subsystems:** `Backend_Solyra/src/routes/`, `Backend_Solyra/src/services/`, `Frontend_Solyra/src/components/workspace/`
+
+## Step 19: Governance & Compliance Logging (Audit Trail Subsystem) [UPCOMING]
+- **Scope**: Extend the existing audit logging subsystem (`audit-event.repository.ts`, `audit_events` schema) to support persistent workspace compliance querying, log retention management, PII privacy controls, and dedicated administration audit log viewer UI.
+- **Status**: Scheduled for pre-implementation architectural audit.
 
 ---
 
