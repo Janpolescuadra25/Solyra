@@ -1,27 +1,38 @@
 # Solyra Product Roadmap
 
-## Current Phase
-### Step 17: Workspace Invitations & Access Management
-#### Phase 1: Workspace Invitation System [COMPLETED]
-- **Status:** COMPLETED
-- **Description:** Implemented token-based workspace invitation system with pending tracking, expiration handling, RBAC enforcement, and acceptance flows building on Step 16 Phase 3 member RBAC.
-- **Verification:** Backend typecheck passed, backend suite passed (114 tests), frontend build passed.
-- **Requirements Delivered:**
-  - Database schema for `workspace_invitations` with token hash, expiration, and role assignment
-  - REST endpoints for creating, revoking, listing, and accepting workspace invitations
-  - Integration with email outbox and audit logging tables
-  - Authorization guards allowing workspace owners and admins to issue invitations
-
-#### Phase 2: Frontend Workspace Invitation Management UI [COMPLETED]
-- **Status:** COMPLETED
-- **Description:** Added the workspace invitation management tab, public acceptance route, API client wrappers, and role-aware invite controls for owners and admins.
-- **Verification:** Frontend production build passes with public invitation acceptance route (/invitations/accept/:token) mounted under PublicLayout and WorkspaceInvitationsTab integrated into OrganizationDetailPage.
+## Current Phase: Step 18 - Workspace Collaboration & Access Policies
 
 ### Step 18: Workspace Collaboration & Access Policies
-- **Status:** PENDING
+- **Status:** ACTIVE
 - **Description:** Extend the workspace control model with advanced sharing policies, role review workflows, and invite lifecycle enforcement beyond the initial management surface.
+- **Milestone Mapping:** Completes the multi-user access foundation and establishes the security bridge into the next governance and collaboration milestones.
+- **Core Objectives:**
+  - Fine-grained permission policy matrix (Workspace Owner vs Admin vs Member vs Viewer)
+  - Cross-workspace resource isolation and tenant scoping guards
+  - Workspace member management UI: role promotion/demotion and member removal
+  - Comprehensive audit logging for workspace membership and access changes
+- **Prerequisites:** Step 17 completed and verified (baseline commit `8d647376e8c932e479af81b3d92cc3ae81ffead9`)
+- **Target Subsystems:** `Backend_Solyra/src/routes/`, `Backend_Solyra/src/services/`, `Frontend_Solyra/src/components/workspace/`
+
+---
 
 ## ARCHIVED: Completed Historical Milestones
+
+### Step 17: Workspace Invitations & Access Control [COMPLETED]
+- **Status:** [COMPLETED] (Verified 2026-11-03)
+- **Git Commit Baseline:** `8d647376e8c932e479af81b3d92cc3ae81ffead9`
+- **Phase 1 (Backend)**:
+  - Database schema: `workspace_invitations` table with SHA-256 token hashing.
+  - Dual repositories: `PostgresWorkspaceInvitationRepository` and `InMemoryWorkspaceInvitationRepository`.
+  - REST API routes: `POST /api/workspaces/:workspaceId/invitations`, `GET /api/workspaces/:workspaceId/invitations`, `DELETE /api/workspaces/:workspaceId/invitations/:invitationId`, `POST /api/workspaces/invitations/accept/:token`.
+  - RBAC authorization guards and 114/114 passing unit & integration tests.
+- **Phase 2 (Frontend UI)**:
+  - Component: `Frontend_Solyra/src/components/workspace/WorkspaceInvitationsTab.tsx`.
+  - Subsystem Doc: `Frontend_Solyra/src/components/workspace/README_WORKSPACE_INVITATIONS_UI.md`.
+  - Public acceptance portal: `InvitationAcceptancePage` mounted at `/invitations/accept/:token` in `App.tsx`.
+  - Client API: `createWorkspaceInvitation`, `listWorkspaceInvitations`, `revokeWorkspaceInvitation`, `acceptWorkspaceInvitation` in `client.ts`.
+  - Organization integration: Wired into `OrganizationDetailPage` in `Frontend_Solyra/src/routes/OrganizationRoutes.tsx`.
+- **Documentation**: Detailed architecture archived in `Docs/implementations/step17_complete_workspace_invitations.md`.
 
 ### Milestone: Layout Separation & Database Connection Resilience
 - **Commit:** 6be2d4f0fae320c15f0dfe035eec2da4b7fbaccd
