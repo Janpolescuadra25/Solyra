@@ -143,7 +143,7 @@ export class InMemoryWorkspaceRepository {
     return this.cloneMembership(members[members.length - 1]);
   }
 
-  async getMember(workspaceId: string, userId: string): Promise<WorkspaceMembership | null> {
+  getMember(workspaceId: string, userId: string): WorkspaceMembership | null {
     const list = this.memberships.get(workspaceId) ?? [];
     const member = list.find((entry) => entry.userId === userId);
     return member ? this.cloneMembership(member) : null;
