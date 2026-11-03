@@ -17,6 +17,7 @@ export interface IWorkspaceRepository {
   getMember(workspaceId: string, userId: string): Promise<WorkspaceMembership | null>;
   removeMember(workspaceId: string, userId: string): Promise<boolean>;
   listMembers(workspaceId: string): Promise<WorkspaceMembership[]>;
+  updateMemberRole(workspaceId: string, userId: string, newRole: string): Promise<WorkspaceMembership>;
 }
 
 export class PostgresWorkspaceRepository implements IWorkspaceRepository {
@@ -38,11 +39,35 @@ export class PostgresWorkspaceRepository implements IWorkspaceRepository {
   private mapMember(row: any): WorkspaceMembership {
     return {
       id: row.id,
-      workspaceId: row.workspace_id,
-      userId: row.user_id,
+      workspaceId: row.workspace_id ?? row.workspaceId,
+      userId: row.user_id ?? row.userId,
       role: row.role,
-      joinedAt: new Date(row.joined_at),
+      joinedAt: new Date(row.joined_at ?? row.joinedAt),
     };
+  }
+
+  private async hydrateMember(row: any): Promise<WorkspaceMembership & { user?: { id: string; email: string; fullName: string } }> {
+    const member = this.mapMember(row);
+    const userIdValue = member.userId;
+    if (!userIdValue) {
+      return member as any;
+    }
+
+    const userQuery = 'SELECT id, email, full_name AS "fullName" FROM users WHERE id = $1 LIMIT 1';
+    const userResult = await this.pool.query(userQuery, [userIdValue]);
+    if (userResult.rows.length === 0) {
+      return member as any;
+    }
+
+    const user = userResult.rows[0];
+    return {
+      ...member,
+      user: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName ?? user.full_name ?? '',
+      },
+    } as any;
   }
 
   private normalizeRole(role: string | undefined, fallback = 'member'): WorkspaceRole {
@@ -174,27 +199,88 @@ export class PostgresWorkspaceRepository implements IWorkspaceRepository {
       normalizedMember.role,
       normalizedMember.joinedAt,
     ]);
-    return this.mapMember(res.rows[0]);
+    return this.hydrateMember(res.rows[0]);
   }
 
   async getMember(workspaceId: string, userId: string): Promise<WorkspaceMembership | null> {
     const res = await this.pool.query(
-      'SELECT * FROM workspace_members WHERE workspace_id = $1 AND user_id = $2 LIMIT 1',
+      `
+        SELECT wm.*, u.email, u.full_name AS "fullName"
+        FROM workspace_members wm
+        LEFT JOIN users u ON u.id = wm.user_id
+        WHERE wm.workspace_id = $1 AND wm.user_id = $2
+        LIMIT 1
+      `,
       [workspaceId, userId],
     );
     if (res.rows.length === 0) {
       return null;
     }
-    return this.mapMember(res.rows[0]);
+    return this.hydrateMember(res.rows[0]);
   }
 
   async removeMember(workspaceId: string, userId: string): Promise<boolean> {
+    const current = await this.getMember(workspaceId, userId);
+    if (!current) {
+      return false;
+    }
+
+    const members = await this.listMembers(workspaceId);
+    if (current.role === 'owner') {
+      const ownerCount = members.filter((member) => member.role === 'owner').length;
+      if (ownerCount <= 1) {
+        return false;
+      }
+    }
+
     const res = await this.pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [workspaceId, userId]);
     return (res.rowCount ?? 0) > 0;
   }
 
   async listMembers(workspaceId: string): Promise<WorkspaceMembership[]> {
-    const res = await this.pool.query('SELECT * FROM workspace_members WHERE workspace_id = $1 ORDER BY joined_at ASC', [workspaceId]);
-    return res.rows.map((row) => this.mapMember(row));
+    const res = await this.pool.query(
+      `
+        SELECT wm.*, u.email, u.full_name AS "fullName"
+        FROM workspace_members wm
+        LEFT JOIN users u ON u.id = wm.user_id
+        WHERE wm.workspace_id = $1
+        ORDER BY wm.joined_at ASC
+      `,
+      [workspaceId],
+    );
+    const members: WorkspaceMembership[] = [];
+    for (const row of res.rows) {
+      members.push(await this.hydrateMember(row));
+    }
+    return members;
+  }
+
+  async updateMemberRole(workspaceId: string, userId: string, newRole: string): Promise<WorkspaceMembership> {
+    const normalizedRole = this.normalizeRole(newRole);
+    const members = await this.listMembers(workspaceId);
+    const targetMember = members.find((member) => member.userId === userId);
+    if (!targetMember) {
+      throw new Error('Member not found in workspace');
+    }
+
+    if (targetMember.role === 'owner' && normalizedRole !== 'owner') {
+      const ownerCount = members.filter((member) => member.role === 'owner').length;
+      if (ownerCount <= 1) {
+        throw new Error('Cannot demote the sole workspace owner');
+      }
+    }
+
+    const query = `
+      UPDATE workspace_members
+      SET role = $1
+      WHERE workspace_id = $2 AND user_id = $3
+      RETURNING *;
+    `;
+    const result = await this.pool.query(query, [normalizedRole, workspaceId, userId]);
+    if (result.rows.length === 0) {
+      throw new Error('Member not found in workspace');
+    }
+
+    return this.hydrateMember(result.rows[0]);
   }
 }

@@ -2168,6 +2168,94 @@ export async function handleWorkspaceRoutes(
     return true;
   }
 
+  if (req.method === 'PUT' && workspacePathParts.length === 6 && workspacePathParts[3] === 'members' && workspacePathParts[5] === 'role') {
+    const targetUserId = workspacePathParts[4];
+    if (!targetUserId) {
+      return false;
+    }
+
+    const authOk = await authenticateRequest(req, res, bundle);
+    if (!authOk || !req.session) {
+      return true;
+    }
+
+    const workspace = await bundle.workspaces.findById(workspaceId);
+    if (!workspace) {
+      sendJsonResponse(res, 404, { success: false, error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+      return true;
+    }
+
+    if (!(await requireWorkspaceRole(req, res, bundle, ['owner', 'admin'], workspaceId))) {
+      return true;
+    }
+
+    let body: unknown;
+    try {
+      body = await readJsonRequest(req, 1024 * 1024);
+    } catch {
+      sendJsonResponse(res, 400, { success: false, error: 'Request body must be valid JSON' });
+      return true;
+    }
+
+    if (!isRecord(body) || typeof body.role !== 'string') {
+      sendJsonResponse(res, 400, { success: false, error: 'Role is required in the request body' });
+      return true;
+    }
+
+    const normalizedRole = body.role.trim().toLowerCase();
+    const validRoles = ['owner', 'admin', 'member', 'viewer'] as const;
+    if (!validRoles.includes(normalizedRole as typeof validRoles[number])) {
+      sendJsonResponse(res, 400, { success: false, error: 'Invalid workspace role', code: 'INVALID_WORKSPACE_ROLE' });
+      return true;
+    }
+
+    if (req.session.userId === targetUserId) {
+      sendJsonResponse(res, 400, { success: false, error: 'Cannot modify your own workspace role' });
+      return true;
+    }
+
+    const targetMember = await bundle.workspaces.getMember(workspaceId, targetUserId);
+    if (!targetMember) {
+      sendJsonResponse(res, 404, { success: false, error: 'Member not found in workspace' });
+      return true;
+    }
+
+    const callerRole = await getEffectiveWorkspaceRole(bundle, workspaceId, req.session.userId);
+    if (callerRole.role === 'admin' && targetMember.role === 'owner') {
+      sendJsonResponse(res, 403, { success: false, error: 'Admins cannot modify owner roles' });
+      return true;
+    }
+
+    if (targetMember.role === 'owner' && normalizedRole !== 'owner') {
+      const members = await bundle.workspaces.listMembers(workspaceId);
+      const ownerCount = members.filter((member) => member.role === 'owner').length;
+      if (ownerCount <= 1) {
+        sendJsonResponse(res, 400, { success: false, error: 'Cannot demote the sole workspace owner' });
+        return true;
+      }
+    }
+
+    const updatedMember = await bundle.workspaces.updateMemberRole(workspaceId, targetUserId, normalizedRole);
+
+    if (bundle.audit && typeof bundle.audit.recordEvent === 'function') {
+      await bundle.audit.recordEvent({
+        eventType: 'workspace.member.role_updated',
+        userId: req.session.userId,
+        workspaceId,
+        details: {
+          targetUserId,
+          previousRole: targetMember.role,
+          newRole: normalizedRole,
+        },
+        ipAddress: req.socket?.remoteAddress,
+        userAgent: req.headers['user-agent'],
+      });
+    }
+
+    sendJsonResponse(res, 200, { success: true, member: updatedMember });
+    return true;
+  }
+
   if (req.method === 'DELETE' && workspacePathParts.length === 5 && workspacePathParts[3] === 'members') {
     const targetUserId = workspacePathParts[4];
     if (!targetUserId) {
