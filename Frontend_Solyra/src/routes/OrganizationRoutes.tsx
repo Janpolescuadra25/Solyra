@@ -15,8 +15,9 @@ import {
   listWorkspaceMembers,
   updateOrganizationMemberRole,
 } from '../api/client';
+import { AuditLogViewer } from '../components/organization/AuditLogViewer';
 
-type TabType = 'members' | 'workspaces' | 'invitations';
+type TabType = 'members' | 'workspaces' | 'invitations' | 'audit-logs';
 
 export const OrganizationsListPage: React.FC = () => {
   const { currentOrganization, switchOrganization, refreshOrganizations } = useAuth();
@@ -93,7 +94,13 @@ export const OrganizationDetailPage: React.FC = () => {
   const { user, userOrgRole } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab');
-  const activeTab: TabType = rawTab === 'workspaces' ? 'workspaces' : rawTab === 'invitations' ? 'invitations' : 'members';
+  const activeTab: TabType = rawTab === 'workspaces'
+    ? 'workspaces'
+    : rawTab === 'invitations'
+      ? 'invitations'
+      : rawTab === 'audit-logs'
+        ? 'audit-logs'
+        : 'members';
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [members, setMembers] = useState<ApiOrganizationMember[]>([]);
@@ -217,6 +224,15 @@ export const OrganizationDetailPage: React.FC = () => {
         >
           Invitations
         </button>
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setSearchParams({ tab: 'audit-logs' })}
+            className={`border-b-2 px-4 py-2 text-sm font-medium transition-colors ${activeTab === 'audit-logs' ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400' : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
+          >
+            Audit Logs
+          </button>
+        )}
       </div>
 
       {activeTab === 'workspaces' ? (
@@ -247,6 +263,8 @@ export const OrganizationDetailPage: React.FC = () => {
             workspaceUserRole={workspaceUserRole}
           />
         </div>
+      ) : activeTab === 'audit-logs' ? (
+        <AuditLogViewer orgId={org.id} canManage={canManage} />
       ) : (
         <>
           <div className="space-y-6">

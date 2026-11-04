@@ -224,6 +224,49 @@ export interface CreateInvitationResponse {
   inviteUrl?: string;
 }
 
+export interface OrganizationAuditLogEntry {
+  id: string;
+  userId?: string | null;
+  user_id?: string | null;
+  workspaceId?: string | null;
+  workspace_id?: string | null;
+  organizationId?: string | null;
+  organization_id?: string | null;
+  action: string;
+  eventType?: string;
+  targetType?: string | null;
+  target_type?: string | null;
+  targetId?: string | null;
+  target_id?: string | null;
+  metadata?: Record<string, unknown>;
+  details?: Record<string, unknown>;
+  ipAddress?: string | null;
+  ip_address?: string | null;
+  userAgent?: string | null;
+  user_agent?: string | null;
+  createdAt?: string | Date;
+  created_at?: string | Date;
+}
+
+export interface OrganizationAuditLogQueryParams {
+  action?: string;
+  workspaceId?: string;
+  userId?: string;
+  targetType?: string;
+  targetId?: string;
+  startDate?: string;
+  endDate?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface OrganizationAuditLogResult {
+  events: OrganizationAuditLogEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 const unwrap = <T,>(data: any): T => data?.data ?? data;
 export async function getOrganizations(): Promise<Organization[]> {
   const response = await client.get('/api/organizations');
@@ -241,6 +284,35 @@ export async function getOrganizationMembers(orgId: string): Promise<ApiOrganiza
 }
 export async function addOrganizationMember(orgId: string, data: { userId: string; role: OrganizationRole }): Promise<ApiOrganizationMember> {
   return unwrap<ApiOrganizationMember>((await client.post(`/api/organizations/${encodeURIComponent(orgId)}/members`, data)).data);
+}
+
+export async function getOrganizationAuditLogs(
+  orgId: string,
+  params: OrganizationAuditLogQueryParams = {},
+): Promise<OrganizationAuditLogResult> {
+  const query = new URLSearchParams();
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+    query.set(key, String(value));
+  });
+
+  const response = await client.get(`/api/organizations/${encodeURIComponent(orgId)}/audit-logs${query.toString() ? `?${query}` : ''}`);
+  const payload = response.data ?? {};
+  const events = Array.isArray(payload.auditLogs)
+    ? payload.auditLogs
+    : Array.isArray(payload.events)
+      ? payload.events
+      : [];
+
+  return {
+    events,
+    total: Number(payload.total ?? events.length ?? 0),
+    limit: Number(payload.limit ?? events.length ?? 0),
+    offset: Number(payload.offset ?? 0),
+  };
 }
 
 export async function listWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {

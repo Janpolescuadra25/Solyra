@@ -2053,7 +2053,8 @@ export async function handleWorkspaceRoutes(
     return true;
   }
 
-  const workspacePathParts = requestPath.split('/').filter(Boolean);
+  const normalizedRequestPath = normalizeRequestPath(requestPath);
+  const workspacePathParts = normalizedRequestPath.split('/').filter(Boolean);
   if (!(workspacePathParts[0] === 'api' && workspacePathParts[1] === 'workspaces')) {
     return false;
   }
@@ -2484,7 +2485,8 @@ export async function handleOrganizationRoutes(
   requestPath: string,
   rateLimiter: RateLimiter,
 ): Promise<boolean> {
-  const orgPathParts = requestPath.split('/').filter(Boolean);
+  const normalizedRequestPath = normalizeRequestPath(requestPath);
+  const orgPathParts = normalizedRequestPath.split('/').filter(Boolean);
   if (!(orgPathParts[0] === 'api' && orgPathParts[1] === 'organizations')) {
     return false;
   }
@@ -2601,6 +2603,94 @@ export async function handleOrganizationRoutes(
 
       const workspaces = await bundle.workspaces.listByOrganization(orgId);
       sendJsonResponse(res, 200, { success: true, workspaces });
+      return true;
+    }
+
+    if (req.method === 'GET' && orgPathParts.length === 4 && orgPathParts[3] === 'audit-logs') {
+      const authOk = await requireOrgRole(req, res, bundle, ['owner', 'admin'], orgId);
+      if (!authOk) {
+        return true;
+      }
+
+      const parsed = requestPath.includes('?') ? new URL(requestPath, 'http://localhost') : new URL(`http://localhost${requestPath}`);
+      const limitParam = parsed.searchParams.get('limit');
+      const offsetParam = parsed.searchParams.get('offset');
+      const limit = limitParam === null ? 25 : Number(limitParam);
+      const offset = offsetParam === null ? 0 : Number(offsetParam);
+
+      if (!Number.isFinite(limit) || limit < 1 || limit > 100) {
+        sendJsonResponse(res, 400, { success: false, error: 'limit must be a number between 1 and 100' });
+        return true;
+      }
+
+      if (!Number.isFinite(offset) || offset < 0) {
+        sendJsonResponse(res, 400, { success: false, error: 'offset must be a non-negative number' });
+        return true;
+      }
+
+      const filters: Record<string, unknown> = {
+        organization_id: orgId,
+        limit,
+        offset,
+      };
+
+      const action = parsed.searchParams.get('action');
+      if (action && action.trim()) filters.action = action.trim();
+
+      const workspaceId = parsed.searchParams.get('workspaceId') ?? parsed.searchParams.get('workspace_id');
+      if (workspaceId && workspaceId.trim()) filters.workspace_id = workspaceId.trim();
+
+      const userId = parsed.searchParams.get('userId') ?? parsed.searchParams.get('user_id');
+      if (userId && userId.trim()) filters.user_id = userId.trim();
+
+      const targetType = parsed.searchParams.get('targetType') ?? parsed.searchParams.get('target_type');
+      if (targetType && targetType.trim()) filters.target_type = targetType.trim();
+
+      const targetId = parsed.searchParams.get('targetId') ?? parsed.searchParams.get('target_id');
+      if (targetId && targetId.trim()) filters.target_id = targetId.trim();
+
+      const startDate = parsed.searchParams.get('startDate') ?? parsed.searchParams.get('start_date');
+      if (startDate) {
+        const start = new Date(startDate);
+        if (Number.isNaN(start.getTime())) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid startDate' });
+          return true;
+        }
+        filters.start_date = start;
+      }
+
+      const endDate = parsed.searchParams.get('endDate') ?? parsed.searchParams.get('end_date');
+      if (endDate) {
+        const end = new Date(endDate);
+        if (Number.isNaN(end.getTime())) {
+          sendJsonResponse(res, 400, { success: false, error: 'Invalid endDate' });
+          return true;
+        }
+        filters.end_date = end;
+      }
+
+      const result = await bundle.audit.queryEvents(filters as any);
+      const events = result.events.map((event) => ({
+        ...event,
+        userId: event.userId ?? event.user_id ?? null,
+        workspaceId: event.workspaceId ?? event.workspace_id ?? null,
+        organizationId: event.organizationId ?? event.organization_id ?? orgId,
+        targetType: event.targetType ?? event.target_type ?? null,
+        targetId: event.targetId ?? event.target_id ?? null,
+        ipAddress: event.ipAddress ?? event.ip_address ?? null,
+        userAgent: event.userAgent ?? event.user_agent ?? null,
+        createdAt: event.createdAt ?? event.created_at,
+        metadata: event.metadata ?? event.details ?? {},
+        details: event.details ?? event.metadata ?? {},
+      }));
+
+      sendJsonResponse(res, 200, {
+        success: true,
+        auditLogs: events,
+        total: result.total,
+        limit: result.limit,
+        offset: result.offset,
+      });
       return true;
     }
 

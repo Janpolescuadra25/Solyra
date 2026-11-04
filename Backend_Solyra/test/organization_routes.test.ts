@@ -269,3 +269,190 @@ test('organization routes enforce RBAC and support role changes', async () => {
   const forbiddenPayload = JSON.parse(forbiddenResponse.body ?? '{}');
   assert.equal(forbiddenPayload.success, false);
 });
+
+test('organization audit-log route enforces admin access and filters by action', async () => {
+  const ownerId = randomUUID();
+  const adminId = randomUUID();
+  const memberId = randomUUID();
+  const orgId = randomUUID();
+  const workspaceId = randomUUID();
+
+  const ownerToken = signSessionToken({
+    sub: ownerId,
+    workspaceId: null,
+    organizationId: orgId,
+    role: 'owner',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  }, jwtSecret);
+
+  const memberToken = signSessionToken({
+    sub: memberId,
+    workspaceId: null,
+    organizationId: orgId,
+    role: 'member',
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+  }, jwtSecret);
+
+  const members = new Map<string, { userId: string; role: 'owner' | 'admin' | 'member'; organizationId: string }>([
+    [ownerId, { userId: ownerId, role: 'owner', organizationId: orgId }],
+    [adminId, { userId: adminId, role: 'admin', organizationId: orgId }],
+    [memberId, { userId: memberId, role: 'member', organizationId: orgId }],
+  ]);
+
+  const bundle = {
+    audit: {
+      queryEvents: async (filters: Record<string, any>) => {
+        const action = filters.action ?? 'all';
+        const items = [
+          {
+            id: 'audit-1',
+            userId: ownerId,
+            user_id: ownerId,
+            workspaceId: workspaceId,
+            workspace_id: workspaceId,
+            organizationId: orgId,
+            organization_id: orgId,
+            action: 'organization.member_added',
+            eventType: 'organization.member_added',
+            targetType: 'organization_member',
+            target_type: 'organization_member',
+            targetId: adminId,
+            target_id: adminId,
+            metadata: { role: 'admin' },
+            details: { role: 'admin' },
+            createdAt: new Date('2026-11-04T12:00:00.000Z'),
+            created_at: new Date('2026-11-04T12:00:00.000Z'),
+          },
+          {
+            id: 'audit-2',
+            userId: adminId,
+            user_id: adminId,
+            workspaceId: workspaceId,
+            workspace_id: workspaceId,
+            organizationId: orgId,
+            organization_id: orgId,
+            action: 'workspace.member.role_updated',
+            eventType: 'workspace.member.role_updated',
+            targetType: 'workspace_member',
+            target_type: 'workspace_member',
+            targetId: memberId,
+            target_id: memberId,
+            metadata: { previousRole: 'member', newRole: 'viewer' },
+            details: { previousRole: 'member', newRole: 'viewer' },
+            createdAt: new Date('2026-11-04T12:30:00.000Z'),
+            created_at: new Date('2026-11-04T12:30:00.000Z'),
+          },
+        ];
+
+        const filtered = items.filter((event) => {
+          if (filters.organization_id && event.organizationId !== filters.organization_id) {
+            return false;
+          }
+          if (filters.workspace_id && event.workspaceId !== filters.workspace_id) {
+            return false;
+          }
+          if (filters.action && event.action !== filters.action) {
+            return false;
+          }
+          if (filters.user_id && event.userId !== filters.user_id) {
+            return false;
+          }
+          if (filters.start_date && new Date(event.createdAt) < new Date(filters.start_date)) {
+            return false;
+          }
+          if (filters.end_date && new Date(event.createdAt) > new Date(filters.end_date)) {
+            return false;
+          }
+          return action === 'all' || action === event.action;
+        });
+
+        return {
+          events: filtered.slice(filters.offset ?? 0, (filters.offset ?? 0) + (filters.limit ?? filtered.length)),
+          total: filtered.length,
+          limit: filters.limit ?? filtered.length,
+          offset: filters.offset ?? 0,
+        };
+      },
+    },
+    organizations: {
+      findById: async (targetOrgId: string) => (targetOrgId === orgId ? { id: orgId, name: 'Audit Org', slug: 'audit-org', ownerId } : null),
+      getMember: async (targetOrgId: string, targetUserId: string) => {
+        if (targetOrgId !== orgId) return null;
+        return members.get(targetUserId) ?? null;
+      },
+    },
+    sessions: {
+      findSessionByTokenHash: async (tokenHash: string) => {
+        const ownerSessionHash = hashToken(ownerToken);
+        const memberSessionHash = hashToken(memberToken);
+
+        if (tokenHash === ownerSessionHash) {
+          return {
+            id: randomUUID(),
+            userId: ownerId,
+            workspaceId: null,
+            organizationId: orgId,
+            tokenHash: ownerSessionHash,
+            expiresAt: new Date(Date.now() + 60_000),
+            createdAt: new Date(),
+            revokedAt: null,
+            revocationReason: null,
+          };
+        }
+
+        if (tokenHash === memberSessionHash) {
+          return {
+            id: randomUUID(),
+            userId: memberId,
+            workspaceId: null,
+            organizationId: orgId,
+            tokenHash: memberSessionHash,
+            expiresAt: new Date(Date.now() + 60_000),
+            createdAt: new Date(),
+            revokedAt: null,
+            revocationReason: null,
+          };
+        }
+
+        return null;
+      },
+    },
+    users: {
+      findById: async (targetUserId: string) => ({ id: targetUserId, isActive: true }),
+    },
+  } as any;
+
+  const authorizedRequest = createRequest('GET', `/api/organizations/${orgId}/audit-logs?action=organization.member_added&limit=25`, ownerToken);
+  const authorizedResponse = createMockResponse();
+  const authorizedHandled = await handleOrganizationRoutes(
+    authorizedRequest,
+    authorizedResponse,
+    bundle,
+    `/api/organizations/${orgId}/audit-logs?action=organization.member_added&limit=25`,
+    new RateLimiter(60_000, 5),
+  );
+
+  assert.equal(authorizedHandled, true);
+  assert.equal(authorizedResponse.statusCode, 200);
+  const authorizedPayload = JSON.parse(authorizedResponse.body ?? '{}');
+  assert.equal(authorizedPayload.success, true);
+  assert.equal(authorizedPayload.auditLogs.length, 1);
+  assert.equal(authorizedPayload.auditLogs[0].action, 'organization.member_added');
+
+  const forbiddenRequest = createRequest('GET', `/api/organizations/${orgId}/audit-logs?limit=25`, memberToken);
+  const forbiddenResponse = createMockResponse();
+  const forbiddenHandled = await handleOrganizationRoutes(
+    forbiddenRequest,
+    forbiddenResponse,
+    bundle,
+    `/api/organizations/${orgId}/audit-logs?limit=25`,
+    new RateLimiter(60_000, 5),
+  );
+
+  assert.equal(forbiddenHandled, true);
+  assert.equal(forbiddenResponse.statusCode, 403);
+  const forbiddenPayload = JSON.parse(forbiddenResponse.body ?? '{}');
+  assert.equal(forbiddenPayload.success, false);
+});
