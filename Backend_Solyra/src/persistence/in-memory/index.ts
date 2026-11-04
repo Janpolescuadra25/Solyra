@@ -4,6 +4,7 @@ export * from './organization.repository.js';
 export * from './chat.repository.js';
 export * from './memory.repository.js';
 export * from './workspace-invitation.repository.js';
+export * from './audit-event.repository.js';
 
 import { InMemoryUserRepository } from './user.repository.js';
 import { InMemoryWorkspaceRepository } from './workspace.repository.js';
@@ -11,7 +12,9 @@ import { InMemoryOrganizationRepository } from './organization.repository.js';
 import { InMemoryChatRepository } from './chat.repository.js';
 import { InMemoryMemoryRepository } from './memory.repository.js';
 import { InMemoryWorkspaceInvitationRepository } from './workspace-invitation.repository.js';
+import { InMemoryAuditEventRepository } from './audit-event.repository.js';
 import type { IWorkspaceInvitationRepository } from '../postgres/repositories/workspace-invitation.repository.js';
+import type { IAuditEventRepository } from '../postgres/repositories/audit-event.repository.js';
 
 export interface InMemoryPersistenceBundle {
   users: any;
@@ -21,7 +24,7 @@ export interface InMemoryPersistenceBundle {
   memories: any;
   workspaceInvitations: IWorkspaceInvitationRepository;
   emailOutbox?: any;
-  audit?: any;
+  audit: IAuditEventRepository;
 }
 
 export function createInMemoryBundle(): InMemoryPersistenceBundle {
@@ -32,5 +35,6 @@ export function createInMemoryBundle(): InMemoryPersistenceBundle {
     chats: new InMemoryChatRepository(),
     memories: new InMemoryMemoryRepository(),
     workspaceInvitations: new InMemoryWorkspaceInvitationRepository(),
+    audit: new InMemoryAuditEventRepository(),
   };
 }

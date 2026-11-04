@@ -271,15 +271,23 @@ CREATE INDEX IF NOT EXISTS idx_email_outbox_status ON email_outbox(status);
 
 -- AUDIT EVENTS
 CREATE TABLE IF NOT EXISTS audit_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE,
-    event_type VARCHAR(64) NOT NULL,
-    details JSONB NOT NULL DEFAULT '{}',
+    id VARCHAR(64) PRIMARY KEY,
+    user_id VARCHAR(64) NOT NULL,
+    workspace_id VARCHAR(64) REFERENCES workspaces(id) ON DELETE CASCADE,
+    organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
+    action VARCHAR(128) NOT NULL,
+    target_type VARCHAR(64),
+    target_id VARCHAR(64),
+    metadata JSONB DEFAULT '{}'::jsonb,
     ip_address VARCHAR(45),
     user_agent TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_events_user_id ON audit_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_workspace_id ON audit_events(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_organization_id ON audit_events(organization_id);
+CREATE INDEX IF NOT EXISTS idx_audit_events_action ON audit_events(action);
 CREATE INDEX IF NOT EXISTS idx_audit_events_created_at ON audit_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_events_ws_created ON audit_events(workspace_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_events_org_created ON audit_events(organization_id, created_at DESC);

@@ -2242,6 +2242,9 @@ export async function handleWorkspaceRoutes(
         eventType: 'workspace.member.role_updated',
         userId: req.session.userId,
         workspaceId,
+        organizationId: (req as any).organizationId ?? null,
+        targetType: 'workspace_member',
+        targetId: targetUserId,
         details: {
           targetUserId,
           previousRole: targetMember.role,
@@ -2292,6 +2295,23 @@ export async function handleWorkspaceRoutes(
     if (!removed) {
       sendJsonResponse(res, 404, { success: false, error: 'Workspace member not found', code: 'WORKSPACE_MEMBER_NOT_FOUND' });
       return true;
+    }
+
+    if (bundle.audit && typeof bundle.audit.recordEvent === 'function') {
+      await bundle.audit.recordEvent({
+        eventType: 'workspace.member.removed',
+        userId: req.session.userId,
+        workspaceId,
+        organizationId: (req as any).organizationId ?? null,
+        targetType: 'workspace_member',
+        targetId: targetUserId,
+        details: {
+          workspaceId,
+          userId: targetUserId,
+        },
+        ipAddress: req.socket?.remoteAddress,
+        userAgent: req.headers['user-agent'],
+      });
     }
 
     sendJsonResponse(res, 200, { success: true, data: { workspaceId, userId: targetUserId, removed: true } });
@@ -2366,6 +2386,9 @@ export async function handleWorkspaceRoutes(
         eventType: 'workspace.invitation.created',
         userId: req.session.userId,
         workspaceId,
+        organizationId: (req as any).organizationId ?? null,
+        targetType: 'workspace_invitation',
+        targetId: invitation.id,
         details: {
           invitationId: invitation.id,
           email: invitation.email,
@@ -2438,6 +2461,9 @@ export async function handleWorkspaceRoutes(
         eventType: 'workspace.invitation.revoked',
         userId: req.session.userId,
         workspaceId,
+        organizationId: (req as any).organizationId ?? null,
+        targetType: 'workspace_invitation',
+        targetId: invitationId,
         details: {
           invitationId,
         },
@@ -2509,6 +2535,9 @@ export async function handleOrganizationRoutes(
         await bundle.audit.recordEvent({
           eventType: 'organization.created',
           userId: req.session.userId,
+          organizationId: org.id,
+          targetType: 'organization',
+          targetId: org.id,
           details: { organizationId: org.id, name: org.name, slug: org.slug },
         });
       }
@@ -2646,6 +2675,9 @@ export async function handleOrganizationRoutes(
             await bundle.audit.recordEvent({
               eventType: 'organization.workspace_created',
               userId: req.session.userId,
+              organizationId: orgId,
+              targetType: 'workspace',
+              targetId: createdWorkspace.id,
               details: { organizationId: orgId, workspaceId: createdWorkspace.id, slug: createdWorkspace.slug, name: createdWorkspace.name },
             });
           }
@@ -2710,6 +2742,9 @@ export async function handleOrganizationRoutes(
           await bundle.audit.recordEvent({
             eventType: 'organization.workspace_linked',
             userId: req.session.userId,
+            organizationId: orgId,
+            targetType: 'workspace',
+            targetId: workspaceId,
             details: { organizationId: orgId, workspaceId },
           });
         }
@@ -2762,6 +2797,9 @@ export async function handleOrganizationRoutes(
         await bundle.audit.recordEvent({
           eventType: 'organization.workspace_unlinked',
           userId: req.session.userId,
+          organizationId: orgId,
+          targetType: 'workspace',
+          targetId: targetWorkspaceId,
           details: { organizationId: orgId, workspaceId: targetWorkspaceId },
         });
       }
@@ -2815,6 +2853,9 @@ export async function handleOrganizationRoutes(
           await bundle.audit.recordEvent({
             eventType: 'organization.member_added',
             userId: req.session.userId,
+            organizationId: orgId,
+            targetType: 'organization_member',
+            targetId: targetUserId,
             details: { organizationId: orgId, targetUserId, role },
           });
         }
@@ -2883,6 +2924,9 @@ export async function handleOrganizationRoutes(
           await bundle.audit.recordEvent({
             eventType: 'organization.member_role_updated',
             userId: req.session.userId,
+            organizationId: orgId,
+            targetType: 'organization_member',
+            targetId: targetUserId,
             details: { organizationId: orgId, targetUserId, role: newRole },
           });
         }
@@ -2937,6 +2981,9 @@ export async function handleOrganizationRoutes(
         await bundle.audit.recordEvent({
           eventType: 'organization.member_removed',
           userId: req.session.userId,
+          organizationId: orgId,
+          targetType: 'organization_member',
+          targetId: targetUserId,
           details: { organizationId: orgId, targetUserId },
         });
       }

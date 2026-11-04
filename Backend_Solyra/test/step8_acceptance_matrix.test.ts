@@ -207,12 +207,19 @@ function installMockPool() {
     }
 
     if (sql.includes('INSERT INTO audit_events')) {
+      const action = String(values[3] ?? 'system_action');
+      const serializedMetadata = values[4] ?? '{}';
       const event = {
         id: String(values[0]),
         user_id: values[1] ?? null,
         workspace_id: values[2] ?? null,
-        event_type: String(values[3]),
-        details: JSON.parse(String(values[4])),
+        organization_id: values[8] ?? null,
+        action,
+        event_type: action,
+        target_type: values[9] ?? null,
+        target_id: values[10] ?? null,
+        details: typeof serializedMetadata === 'string' ? JSON.parse(serializedMetadata) : serializedMetadata ?? {},
+        metadata: typeof serializedMetadata === 'string' ? JSON.parse(serializedMetadata) : serializedMetadata ?? {},
         ip_address: values[5] ?? null,
         user_agent: values[6] ?? null,
         created_at: new Date().toISOString(),
@@ -221,7 +228,10 @@ function installMockPool() {
       return { rows: [event], rowCount: 1 };
     }
 
-    if (sql.includes('SELECT id, event_type, user_id, workspace_id, details, ip_address, user_agent, created_at')) {
+    if (
+      sql.includes('SELECT id, event_type, user_id, workspace_id, details, ip_address, user_agent, created_at') ||
+      sql.includes('SELECT id, action, user_id, workspace_id, metadata, ip_address, user_agent, created_at')
+    ) {
       const limit = Number(values[0] ?? 50);
       return { rows: auditEvents.slice(0, limit), rowCount: auditEvents.length };
     }
@@ -557,12 +567,19 @@ test('AuditEventRepository records immutable audit events for admin actions', as
   const repository = new AuditEventRepository({
     query: async (sql: string, params: unknown[]) => {
       if (String(sql).includes('INSERT INTO audit_events')) {
+        const action = String(params[3] ?? 'system_action');
+        const serializedMetadata = params[4] ?? '{}';
         const event = {
           id: String(params[0]),
           user_id: params[1] ?? null,
           workspace_id: params[2] ?? null,
-          event_type: String(params[3]),
-          details: JSON.parse(String(params[4])),
+          organization_id: params[8] ?? null,
+          action,
+          event_type: action,
+          target_type: params[9] ?? null,
+          target_id: params[10] ?? null,
+          details: typeof serializedMetadata === 'string' ? JSON.parse(serializedMetadata) : serializedMetadata ?? {},
+          metadata: typeof serializedMetadata === 'string' ? JSON.parse(serializedMetadata) : serializedMetadata ?? {},
           ip_address: params[5] ?? null,
           user_agent: params[6] ?? null,
           created_at: new Date().toISOString(),
@@ -570,7 +587,11 @@ test('AuditEventRepository records immutable audit events for admin actions', as
         auditEvents.unshift(event);
         return { rows: [event], rowCount: 1 };
       }
-      if (String(sql).includes('SELECT id, event_type, user_id, workspace_id, details, ip_address, user_agent, created_at')) {
+      if (
+        String(sql).includes('SELECT id, event_type, user_id, workspace_id, details, ip_address, user_agent, created_at') ||
+        String(sql).includes('SELECT id, action, user_id, workspace_id, metadata, ip_address, user_agent, created_at') ||
+        (String(sql).includes('SELECT') && String(sql).includes('audit_events') && (String(sql).includes('action') || String(sql).includes('event_type')) && (String(sql).includes('metadata') || String(sql).includes('details')))
+      ) {
         const limit = Number(params[0] ?? 50);
         return { rows: auditEvents.slice(0, limit), rowCount: auditEvents.length };
       }
