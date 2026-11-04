@@ -1,6 +1,17 @@
 # Solyra Product Roadmap
 
-## Current Phase: Step 19 - Governance & Compliance Logging (Audit Trail Subsystem) [ACTIVE]
+Current Active Phase: Step 20: Log Retention & Compliance Automation
+
+## Current Phase: Step 20 — Log Retention & Compliance Automation [ACTIVE]
+**Phase Goal:** Implement log retention policies, automated cleanup and purging of expired audit events, compliance hold mechanisms, and retention configuration endpoints for organizations.
+**Dependencies:** Step 19 (Governance & Compliance Logging / Audit Trail Subsystem) - COMPLETED & ARCHIVED (Baseline Commit: `405942e7ec03a1d2ef7d399ecd367327267f2cf5`).
+**Key Deliverables:**
+- Database schema extension: `retention_expires_at TIMESTAMPTZ` and `archive_state VARCHAR(32)` on `audit_events`; `retention_default_days INT DEFAULT 365` on `organizations`.
+- Migration rollback script: `step20_phase1_retention_rollback.sql`.
+- Persistence layer extension: Audit event retention methods (`setRetention()`, `purgeExpired()`, `applyComplianceHold()`) in `IAuditEventRepository` and dual implementations (`PostgresAuditEventRepository` and `InMemoryAuditEventRepository`).
+- Automated retention worker: Extension of `Backend_Solyra/src/persistence/retention-cleaner.ts` to evaluate expired audit logs according to organization retention rules and compliance hold flags.
+- Phase 1: Backend schema migration, repository retention methods, and automated retention cleaner service.
+- Phase 2: Retention policy management API endpoints and administrative configuration UI.
 
 ## Step 18: Workspace Collaboration & Access Policies [COMPLETED]
 - **Status:** [COMPLETED]
@@ -22,39 +33,6 @@
 - **Prerequisites:** Step 17 completed and verified (baseline commit `8d647376e8c932e479af81b3d92cc3ae81ffead9`)
 - **Target Subsystems:** `Backend_Solyra/src/routes/`, `Backend_Solyra/src/services/`, `Frontend_Solyra/src/components/workspace/`
 
-## Step 19: Governance & Compliance Logging (Audit Trail Subsystem) [COMPLETED]
-- **Scope**: Extend the existing audit logging subsystem to support persistent workspace compliance querying, log retention management, recursive PII privacy controls, and dedicated administration audit log viewer UI.
-- **Status:** [COMPLETED]
-- **Current Phase:** Phase 2: Frontend Audit Log Viewer UI [COMPLETED]
-
-### Phase 1: Backend Audit Schema Repair, In-Memory Parity, Recursive PII Redaction & Query Engine [COMPLETED]
-- **Status:** [COMPLETED]
-- **Baseline Commit:** `4ade4de41cb6ae6a02d62d525e50ea5967d25152`
-- **Deliverables Completed:**
-  - Corrected `audit_events.workspace_id` to `VARCHAR(64)` and `audit_events.organization_id` to `UUID REFERENCES organizations(id) ON DELETE CASCADE`.
-  - Added composite indexes (`(workspace_id, created_at DESC)`, `(organization_id, created_at DESC)`).
-  - Created schema rollback script `Backend_Solyra/src/persistence/postgres/step19_phase1_audit_rollback.sql`.
-  - Implemented recursive `redactPii()` sanitizing sensitive keys across arbitrary object nesting depths.
-  - Implemented `queryEvents()` supporting multi-criteria filtering and pagination.
-  - Created `InMemoryAuditEventRepository` achieving 100% dual-tier persistence parity with bundle wiring.
-  - Created `Backend_Solyra/src/persistence/README_AUDIT_LOGGING_BACKEND.md`.
-  - Enriched event emissions in `Backend_Solyra/src/index.ts` with target metadata and organization context.
-  - Preserved backward compatibility across all legacy test suites including `Backend_Solyra/test/step8_acceptance_matrix.test.ts`.
-  - Added comprehensive test suite `Backend_Solyra/test/audit-events.test.ts` (127/127 backend tests passing).
-
-### Phase 2: Frontend Audit Log Viewer UI [COMPLETED]
-- **Status:** [COMPLETED]
-- **Description:** Implement dedicated administration audit log viewer UI with filtering (workspace, organization, user, action, date range), paginated event table, safe PII redaction display, and compliance export controls.
-- **Baseline Commit:** `7ac6a06a7ffbf0412bea8ab0697cd53cff5707a2`
-- **Deliverables Completed:**
-  - Implemented `GET /api/organizations/:orgId/audit-logs` in `Backend_Solyra/src/index.ts` with input validation, path normalization, and `requireOrgRole(['owner', 'admin'])`.
-  - Added route tests in `Backend_Solyra/test/organization_routes.test.ts` (128/128 backend tests passing).
-  - Added `getOrganizationAuditLogs()` API client method in `Frontend_Solyra/src/api/client.ts`.
-  - Built component suite in `Frontend_Solyra/src/components/organization/` (`AuditLogViewer`, `AuditLogFilters`, `AuditLogTable`, `AuditExportButton`).
-  - Integrated "Audit Logs" tab into `Frontend_Solyra/src/routes/OrganizationRoutes.tsx` with `canManage` RBAC guard.
-  - Implemented compliance export controls for both CSV and JSON download.
-  - Created subsystem documentation `Frontend_Solyra/src/components/organization/README_AUDIT_LOG_UI.md`.
-
 ---
 
 ## ARCHIVED: Completed Historical Milestones
@@ -74,6 +52,24 @@
   - Client API: `createWorkspaceInvitation`, `listWorkspaceInvitations`, `revokeWorkspaceInvitation`, `acceptWorkspaceInvitation` in `client.ts`.
   - Organization integration: Wired into `OrganizationDetailPage` in `Frontend_Solyra/src/routes/OrganizationRoutes.tsx`.
 - **Documentation**: Detailed architecture archived in `Docs/implementations/step17_complete_workspace_invitations.md`.
+
+### Step 19: Governance & Compliance Logging (Audit Trail Subsystem) [COMPLETED]
+- **Baseline Commit**: `405942e7ec03a1d2ef7d399ecd367327267f2cf5`
+- **Status**: 100% Complete & Verified (November 2026)
+- **Phase 1 Deliverables**:
+  * Corrected database schema: `workspace_id VARCHAR(64)` and `organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE`.
+  * Added composite indexes: `(workspace_id, created_at DESC)` and `(organization_id, created_at DESC)`.
+  * Implemented recursive PII scrubber (`redactPii()`) stripping sensitive tokens across nested metadata.
+  * Built multi-criteria query engine (`queryEvents()`) supporting date ranges, actors, actions, workspaces, and pagination.
+  * Implemented `InMemoryAuditEventRepository` with dual parity and wired into in-memory bundle.
+  * Created rollback script `step19_phase1_audit_rollback.sql` and backend documentation `README_AUDIT_LOGGING_BACKEND.md`.
+- **Phase 2 Deliverables**:
+  * Backend route `GET /api/organizations/:orgId/audit-logs` in `Backend_Solyra/src/index.ts` with query normalization and `requireOrgRole(['owner', 'admin'])`.
+  * 128 passing backend test suites in `Backend_Solyra/test/organization_routes.test.ts`.
+  * Frontend API client method `getOrganizationAuditLogs()` in `Frontend_Solyra/src/api/client.ts`.
+  * Frontend component suite in `Frontend_Solyra/src/components/organization/`: `AuditLogViewer.tsx`, `AuditLogFilters.tsx`, `AuditLogTable.tsx`, and `AuditExportButton.tsx` (supporting both CSV and JSON exports).
+  * Tab integration in `Frontend_Solyra/src/routes/OrganizationRoutes.tsx` guarded by `canManage`.
+  * Frontend documentation `Frontend_Solyra/src/components/organization/README_AUDIT_LOG_UI.md`.
 
 ### Milestone: Layout Separation & Database Connection Resilience
 - **Commit:** 6be2d4f0fae320c15f0dfe035eec2da4b7fbaccd
